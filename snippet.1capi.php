@@ -1,8 +1,10 @@
 <?php
+error_reporting(E_ALL);
 // константы которые потом можно перенести в конфиг
 define ("CATALOG_ID", 14);
-define ("TV_MIN_INFO", 0);
+define ("TV_MIN_INFO", 1);
 define ("PRODUCT_TEMPLATE", 4);
+define ("CATALOG_TEMPLATE", 3);
 define ("START_DEL_ID", 43);
 
 $exchange = new Exchange($modx);
@@ -29,7 +31,8 @@ class Exchange{
     $this->data = json_decode($_POST['data'], true);
     $this->sig   = $_POST['sig'];
     
-    if($this->data == null) echo "null data";
+    if($this->data == null)
+      echo "null data\n";
     print_r($this->data);
   }
   
@@ -193,44 +196,73 @@ class Exchange{
   * @param $isCategory - создать категорию или же просто товар
   */
   function putProduct($isCategory = false) {
-    $ids = $this->getIdsFromData();
+    $resourceFields = $this->getResourceFields();
+    $tvs = $this->getTemplateVariables();
     
-    if($ids == null) {
-      $this->createResource($isCategory);
-    } else {
-      //$this->updateResource($ids);
-    }
+    $this->createResource($resourceFields, $tvs, $isCategory);
   }
   
   /**
-  * Создает новый ресурс с параметрами взятыми из JSON
+  * Создает новый ресурс или обновляет старый с параметрами взятыми из JSON
+  * @param $resourceFields - массив полей ресурсов (id, template и т.п.)
+  * @param $tvs - массив полей шаблона (tv)
+  * @param $isCategory - true- категория, false продукт
   */
-  function createResource($isCategory) {
-    if(array_key_exists('pagetitle',$this->data) && array_key_exists('parent',$this->data)) {
-      $newResource = $this->modx->newObject('modResource');
+  // for test [{"parent":15, "pagetitle": "test"},[{"name":"keywords","value":"container"}, {"name":"meta_title","value":"collection"}] ]
+  function createResource($resourceFields, $tvs, $isCategory) {
+    $objectType = ($isCategory) ? 'CollectionContainer' : 'modResource';
+
+    // находим ресурс
+    if($resourceFields['id'] != null) {
+      $resource = $this->modx->getObject($objectType, $resourceFields['id']);
+      if($resource == null) {
+        $this->result["error"] .= "|resource not found";
+      }
+    }
+      // создаем ресуср
+    else {
+      if(array_key_exists('pagetitle',$resourceFields) &&  array_key_exists('parent',$resourceFields)) {
+        $resource = $this->modx->newObject($objectType);
+      } else {
+        $this->result["error"] .= "|pagetitle or parent not found";
+      }
+    }
       
-      // стандартные значения
-      $newResArray = $newResource->toArray();
-      $newResArray['template'] = PRODUCT_TEMPLATE;
-      $newResArray['published'] = 1;
-      $newResArray['publishedon'] = date('Y-m-d H:i:s');
-      $newResArray['show_in_tree'] = 0;
-      $newResArray['isfolder'] = ($isCategory) ? 1 : 0;
+    if(isset($resource)) {
+      // стандартные параметры
+      $resourceArray = $resource->toArray();
+      $resourceArray['published'] = 1;
+      $resourceArray['publishedon'] = date('Y-m-d H:i:s');
+      
+      if($isCategory) {
+        $resourceArray['isfolder'] = 1;
+        $resourceArray['template'] = CATALOG_TEMPLATE;
+        $resourceArray['show_in_tree'] = 1;
+      } else {
+        $resourceArray['isfolder'] = 0;
+        $resourceArray['template'] = PRODUCT_TEMPLATE;
+        $resourceArray['show_in_tree'] = 0;
+      }
      
-     // значения полученные из JSON
-      foreach($this->data as $key=>$value) {
-        if(array_key_exists($key, $newResArray)) {
-          $newResArray[$key] = $value;
+     // полученные из JSON параметры
+      foreach($resourceFields as $key=>$value) {
+        if(array_key_exists($key, $resourceArray) && $key!='id') {
+          $resourceArray[$key] = $value;
         }
       }
       
       // сохраненяем ресурс и получяем id
-      $newResource->fromArray($newResArray);
-      $newResource->save();
-      $id = $newResource->get('id');
+      $resource->fromArray($resourceArray);
+      $resource->save();
+      $id = $resource->get('id');
       $this->result = "$id";
-    } else {
-      $this->result["error"] .= "|pagetitle or parent not found";
+      
+      // tv параметры
+      foreach($tvs as $tv) {
+        if(isset($tv['name']) && isset($tv['value'])) {
+          $resource->setTVValue($tv["name"], $tv["value"]);
+        }
+      }
     }
   }
   
@@ -256,7 +288,7 @@ class Exchange{
       } else if ($resource->remove() == false) {
         $this->result["error"] .= '|An error occurred while trying to remove the box!';
       } else {
-        $this->result = "$id deleted";
+        array_push($this->result, "$id deleted");
       }
     }
   }
@@ -295,6 +327,18 @@ class Exchange{
       echo "resource $id updated\n";
     } else {
       echo "resource $id not found\n";
+    }
+  }
+  
+  function getResourceFields() {
+    if(isset($this->data[0])) {
+      return $this->data[0];
+    }
+  }
+  
+  function getTemplateVariables() {
+    if(isset($this->data[1])) {
+      return $this->data[1];
     }
   }
 }
