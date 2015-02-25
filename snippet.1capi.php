@@ -1,14 +1,12 @@
 <?php
 // константы которые потом можно перенести в конфиг
 define ("CATALOG_ID", 14);          // id ресурса корня каталогов
-define ("TV_MIN_INFO", true);      // определяет отдавать минимально необходимую инфу (true) или всю(false)
-define ("PRODUCT_TEMPLATE", 4); // id шаблона товара
-define ("CATALOG_TEMPLATE", 3); // id шаблона каталога
-define ("START_DEL_ID", 43);       // id ресурса,начиная с которого можно удалять ресурсы
+define ("TV_MIN_INFO", true);       // определяет отдавать минимально необходимую инфу (true) или всю(false)
+define ("PRODUCT_TEMPLATE", 4);     // id шаблона товара
+define ("CATALOG_TEMPLATE", 3);     // id шаблона каталога
+define ("START_DEL_ID", 43);        // id ресурса,начиная с которого можно удалять ресурсы
 
-//$exchange = new Exchange($modx);
-phpinfo();
-exit;
+$exchange = new Exchange($modx);
 
 class Exchange
 {
@@ -23,6 +21,7 @@ class Exchange
     function __construct(modX &$modx)
     {
         $this->modx = &$modx;
+        $this->result = array();
         $this->process();
     }
 
@@ -66,8 +65,8 @@ class Exchange
             case 'getCategories':
                 $this->getCategories();
                 break;
-            case 'getPurchase':
-                $this->getPurchase();
+            case 'getOrders':
+                $this->getOrders();
                 break;
             default:
                 $this->result["error"] .= "|command not found";
@@ -316,7 +315,7 @@ class Exchange
 
     /**
      * Получает id в виде массива из JSON
-     * @return массив id или null
+     * @return null или массив id
      */
     function getIdsFromData()
     {
@@ -359,24 +358,64 @@ class Exchange
     * Вторая часть
     */
 
-    function getPurchase()
-    {
+    public function getOrders() {
+        $modelpath = $this->modx->getOption('core_path') . 'components/shopkeeper3/model/';
+        $this->modx->addPackage( 'shopkeeper3', $modelpath );
 
+        $ids = $this->getIdsFromData();
+        foreach($ids as $id) {
+            $order = $this->getOrder($id);
+            array_push($this->result,$order);
+        }
+    }
+
+    /**
+     * Получает заказ по его id
+     */
+    public function getOrder($order_id) {
+        $order_data = array();
+        if( $order_id ){
+            $order = $this->modx->getObject('shk_order',$order_id);
+            if( $order ){
+                $order_data = $order->toArray();
+                $order_data['purchases'] = $this->getPurchases( $order_id );
+            }
+        }
+
+        return $order_data;
+    }
+
+    /**
+     * getPurchases
+     *
+     */
+    public function getPurchases( $order_id ){
+
+        $output = array();
+
+        $query = $this->modx->newQuery('shk_purchases');
+        $query->where( array( 'order_id' => $order_id ) );
+        $query->sortby( 'id', 'asc' );
+        $purchases = $this->modx->getIterator( 'shk_purchases', $query );
+
+        if( $purchases ) {
+            foreach( $purchases as $purchase ){
+                $p_data = $purchase->toArray();
+                if( !empty( $p_data['options'] ) ){
+                    $p_data['options'] = json_decode( $p_data['options'], true );
+                }
+
+                $fields_data = array();
+                if( !empty( $p_data['data'] ) ){
+                    $fields_data = json_decode( $p_data['data'], true );
+                    unset($p_data['data']);
+                }
+
+                $purchase_data = array_merge( $fields_data, $p_data );
+                array_push( $output, $purchase_data );
+            }
+        }
+
+        return $output;
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
