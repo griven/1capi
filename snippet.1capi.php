@@ -68,6 +68,9 @@ class Exchange
             case 'getOrders':
                 $this->getOrders();
                 break;
+            case 'updateOrder':
+                $this->updateOrder();
+                break;
             default:
                 $this->result["error"] .= "|command not found";
                 break;
@@ -147,7 +150,7 @@ class Exchange
     /**
      * Получает информацию о ресурсе по его id
      * @param $id - номер ресурса информацию о котором нужно узнать
-     * @return null или массив состояющий из массива resource fields и массива template variables
+     * @return null|array состояющий из массива resource fields и массива template variables
      */
     function getProductInfo($id)
     {
@@ -164,7 +167,7 @@ class Exchange
     /**
      * Получает все поля ресурса resource fields по его id
      * @param $id - номер ресурса информацию о котором нужно узнать
-     * @return массив содержащий resource fields
+     * @return array|null массив содержащий resource fields
      */
     function getAllResourceFields($id)
     {
@@ -180,7 +183,7 @@ class Exchange
     /**
      * Получает все TV ресурса по его id
      * @param $id - номер ресурса информацию о котором нужно узнать
-     * @return массив содержащий template variables
+     * @return array|null массив содержащий template variables
      */
     function getAllTemplateVars($id)
     {
@@ -214,7 +217,7 @@ class Exchange
         $resourceFields = $this->getResourceFields();
         $tvs = $this->getTemplateVariables();
 
-        $this->createResource($resourceFields, $tvs, $isCategory);
+        $this->createOrUpdateResource($resourceFields, $tvs, $isCategory);
     }
 
     /**
@@ -224,7 +227,7 @@ class Exchange
      * @param $isCategory - true- категория, false продукт
      */
     // for test [{"parent":15, "pagetitle": "test"},[{"name":"keywords","value":"container"}, {"name":"meta_title","value":"collection"}] ]
-    function createResource($resourceFields, $tvs, $isCategory)
+    function createOrUpdateResource($resourceFields, $tvs, $isCategory)
     {
         $objectType = ($isCategory) ? 'CollectionContainer' : 'modResource';
 
@@ -334,23 +337,27 @@ class Exchange
 
     /**
      * Получает поля(переменные) ресурса
-     * @return ассоциативный массив полей ресурса
+     * @return array ассоциативный массив полей ресурса
      */
     function getResourceFields()
     {
         if (isset($this->data[0])) {
             return $this->data[0];
+        } else {
+            return null;
         }
     }
 
     /**
      * Получает переменные шаблона
-     * @return ассоциативный массив полей ресурса
+     * @return array ассоциативный массив полей ресурса
      */
     function getTemplateVariables()
     {
         if (isset($this->data[1])) {
             return $this->data[1];
+        } else {
+            return null;
         }
     }
 
@@ -358,9 +365,19 @@ class Exchange
     * Вторая часть
     */
 
-    public function getOrders() {
+    /**
+     * Подключает пакет shopkeeper
+     */
+    function includeShopkeeper() {
         $modelpath = $this->modx->getOption('core_path') . 'components/shopkeeper3/model/';
         $this->modx->addPackage( 'shopkeeper3', $modelpath );
+    }
+
+    /**
+     * Получает всю инфу о заказе по его JSON
+     */
+    function getOrders() {
+        $this->includeShopkeeper();
 
         $ids = $this->getIdsFromData();
         foreach($ids as $id) {
@@ -371,8 +388,10 @@ class Exchange
 
     /**
      * Получает заказ по его id
+     * @param $order_id - номер заказа
+     * @return array создержащий все поля заказа
      */
-    public function getOrder($order_id) {
+    function getOrder($order_id) {
         $order_data = array();
         if( $order_id ){
             $order = $this->modx->getObject('shk_order',$order_id);
@@ -386,11 +405,11 @@ class Exchange
     }
 
     /**
-     * getPurchases
-     *
+     * Получает конкретные покупки по id заказа
+     * @param $order_id - номер заказа
+     * @return array представление объекта заказа в массиве
      */
-    public function getPurchases( $order_id ){
-
+    function getPurchases( $order_id ){
         $output = array();
 
         $query = $this->modx->newQuery('shk_purchases');
@@ -415,7 +434,54 @@ class Exchange
                 array_push( $output, $purchase_data );
             }
         }
-
         return $output;
+    }
+
+    /**
+     * Обновляет заказ
+     */
+    function updateOrder() {
+        if($this->data['id'] > 0) {
+            $this->includeShopkeeper();
+            $order_data = $this->getOrder($this->data['id']);
+
+            if(count($order_data) > 1) {
+                foreach ($this->data as $key=>$value) {
+                    if( array_key_exists($key, $order_data)) {
+                        if($key != 'id' && $key != 'purchases') {
+                            $order_data[$key] = $value;
+                        } else if ($key == 'purchases') {
+                            $order_data = $this->updatePurchases($order_data, $value);
+                        }
+                    }
+                }
+                $order = $this->modx->getObject('shk_order',$this->data['id']);
+                $order->fromArray($order_data);
+                $order->save();
+                $this->result[0] = true;
+            }
+        }
+    }
+
+    /**
+     * Обновляет покупки в заказе
+     * @param array $order_data массив заказа
+     * @param array $new_purchases массив измененных покупок
+     * @return array
+     */
+    function updatePurchases($order_data = array(), $new_purchases = array()) {
+        if (isset($order_data['purchases'])) {
+            foreach ($new_purchases as $id => $new_purchase) {
+                if (isset($order_data['purchases'][$id])) {
+                    foreach ($new_purchase as $key => $value) {
+                        if (array_key_exists($key, $order_data['purchases'][$id]) && $key != 'id' && $key != 'p_id') {
+                            $order_data['purchases'][$id][$key] = $value;
+                        }
+                    }
+                }
+            }
+        }
+
+        return $order_data;
     }
 }
