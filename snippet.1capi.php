@@ -47,8 +47,8 @@ class Exchange
         $this->getPostData();
 
         switch ($this->cmd) {
-            case 'getProduct':
-                $this->getProduct();
+            case 'getProducts':
+                $this->getProducts();
                 break;
             case 'getAllChild':
                 $this->getAllChild();
@@ -71,6 +71,9 @@ class Exchange
             case 'updateOrder':
                 $this->updateOrder();
                 break;
+            case 'getImages':
+                $this->getImages();
+                break;
             default:
                 $this->result["error"] .= "|command not found";
                 break;
@@ -92,7 +95,7 @@ class Exchange
         foreach ($this->result as $res) {
             echo json_encode($res) . "\n";
         }
-        // иначе неправильно отдается JSON с большой вложенностью (например getProduct)
+        // иначе неправильно отдается JSON с большой вложенностью (например getProducts)
         exit;
     }
 
@@ -100,7 +103,7 @@ class Exchange
      * Функция получения товаров
      * если в json не указан id, то получает все товары корневого каталога
      */
-    function getProduct()
+    function getProducts()
     {
         $ids = $this->getIdsFromData();
 
@@ -197,6 +200,7 @@ class Exchange
                     $tv_param['name'] = $tv->get('name');
                     $tv_param['type'] = $tv->get('type');
                     $tv_param['value'] = $tv->get('value');
+                    $tv_param['source'] = $tv->get('source');
                 } else {
                     $tv_param = $tv->toArray();
                 }
@@ -481,7 +485,56 @@ class Exchange
                 }
             }
         }
-
         return $order_data;
+    }
+
+    /**
+     * Получает url картинки и краткую информацию о товаре
+     */
+    function getImages() {
+        $this->result = 'getImages';
+        $this->getProducts();
+
+        $products = $this->result;
+        $this->result = array();
+
+        for($i = 0; $i<count($products); $i++) {
+            if (isset($products[$i][1])) {
+                foreach ($products[$i][1] as $id => $tv) {
+                    if (isset($tv['type']) && $tv['type'] == 'image') {
+                        $file_source = ($tv['source'] == 2) ? 'userfiles/' : '';
+                        if ($tv['value']) {
+                            $tv['full_url'] = MODX_SITE_URL . $file_source . $tv['value'];
+                        } else {
+                            $tv['full_url'] = '';
+                        }
+                        $products[$i][1][$id] = $tv;
+                    } else {
+                        unset($products[$i][1][$id]);
+                    }
+                }
+            }
+        }
+
+        $this->result = $this->cutProductInfo($products);
+    }
+
+    /**
+     * Обрезает ненужную инфу о товаре
+     * @param array $products - массив товаров
+     * @return array - обработанный массив товаров
+     */
+    function cutProductInfo($products = array()) {
+        $neededKeys = array('id', 'pagetitle', 'uri');
+        for($i = 0; $i<count($products); $i++) {
+            if(isset($products[$i][0])) {
+                foreach ($products[$i][0] as $key=>$value) {
+                    if(!in_array($key,$neededKeys))
+                        unset($products[$i][0][$key]);
+                }
+            }
+        }
+
+        return $products;
     }
 }
