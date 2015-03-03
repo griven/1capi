@@ -74,6 +74,9 @@ class Exchange
             case 'getImages':
                 $this->getImages();
                 break;
+            case 'putImage':
+                $this->putImage();
+                break;
             default:
                 $this->result["error"] .= "|command not found";
                 break;
@@ -536,5 +539,48 @@ class Exchange
         }
 
         return $products;
+    }
+
+    /**
+     * Загружает картинку и вставляет её в TV определенного ресурса
+     */
+    function putImage()
+    {
+        if (isset($this->data['id']) && isset($this->data['tv'])) {
+            $ext_array = array('gif', 'jpg', 'jpeg', 'png');
+            $uploaddir = MODX_BASE_PATH . 'userfiles/';
+            $filename = basename($_FILES['file']['name']);
+
+            $ext = pathinfo($filename, PATHINFO_EXTENSION);
+
+            $res = $this->modx->getObject('modResource',$this->data['id']);
+            if(isset($res)) {
+                $tv = $res->getTVValue($this->data['tv']);
+                if(!isset($tv)) {
+                    $this->result[error] .= '|cant find this tv';
+                }
+            } else {
+                $this->result[error] .= '|cant find this resource';
+            }
+
+            if ($filename != '' && isset($tv)) {
+                if (in_array($ext, $ext_array)) {
+                    // Делаем уникальное имя файла
+                    $filename = mb_strtolower($filename);
+                    $filename = str_replace(' ', '_', $filename);
+                    $filename = date("Ymdgi") . $filename;
+
+                    $uploadfile = $uploaddir . $filename;
+                    if (move_uploaded_file($_FILES['file']['tmp_name'], $uploadfile)) {
+                        $res->setTVValue($this->data['tv'], $filename);
+                        array_push($this->result, 'image loaded');
+                    } else {
+                        $this->result[error] .= '|cant load the file';
+                    }
+                } else {
+                    $this->result[error] .= '|bad file extension';
+                }
+            }
+        }
     }
 }
