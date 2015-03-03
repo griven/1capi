@@ -12,11 +12,9 @@ class Exchange
 {
     public $modx;
 
-    public $cmd;
-    public $data;
-    public $sig;
-
-    public $result;
+    public $cmd;    // функция которую требуется запустить
+    public $data;   // данные необходимые для функции
+    public $result; // результат работы функции
 
     function __construct(modX &$modx)
     {
@@ -26,63 +24,80 @@ class Exchange
     }
 
     /**
-     * Разбирает полученные данные
-     */
-    function getPostData()
-    {
-        $this->cmd = $_POST['cmd'];
-        $this->data = json_decode($_POST['data'], true);
-        $this->sig = $_POST['sig'];
-
-        if ($this->data == null)
-            echo "null data\n";
-        print_r($this->data);
-    }
-
-    /**
      *  Основная функция
      */
     function process()
     {
         $this->getPostData();
 
-        switch ($this->cmd) {
-            case 'getProducts':
-                $this->getProducts();
-                break;
-            case 'getAllChild':
-                $this->getAllChild();
-                break;
-            case 'delProduct':
-                $this->delProduct();
-                break;
-            case 'putProduct':
-                $this->putProduct(false);
-                break;
-            case 'putProductCategory':
-                $this->putProduct(true);
-                break;
-            case 'getCategories':
-                $this->getCategories();
-                break;
-            case 'getOrders':
-                $this->getOrders();
-                break;
-            case 'updateOrder':
-                $this->updateOrder();
-                break;
-            case 'getImages':
-                $this->getImages();
-                break;
-            case 'putImage':
-                $this->putImage();
-                break;
-            default:
-                $this->result["error"] .= "|command not found";
-                break;
+        if($this->approveSig()) {
+            switch ($this->cmd) {
+                case 'getProducts':
+                    $this->getProducts();
+                    break;
+                case 'getAllChild':
+                    $this->getAllChild();
+                    break;
+                case 'delProduct':
+                    $this->delProduct();
+                    break;
+                case 'putProduct':
+                    $this->putProduct(false);
+                    break;
+                case 'putProductCategory':
+                    $this->putProduct(true);
+                    break;
+                case 'getCategories':
+                    $this->getCategories();
+                    break;
+                case 'getOrders':
+                    $this->getOrders();
+                    break;
+                case 'updateOrder':
+                    $this->updateOrder();
+                    break;
+                case 'getImages':
+                    $this->getImages();
+                    break;
+                case 'putImage':
+                    $this->putImage();
+                    break;
+                default:
+                    $this->result["error"] .= "|command not found";
+                    break;
+            }
         }
 
         $this->response();
+    }
+
+    /**
+     * Разбирает полученные данные
+     */
+    function getPostData()
+    {
+        $this->cmd = $_POST['cmd'];
+        $this->data = json_decode($_POST['data'], true);
+
+        if(DEBUG) {
+            if ($this->data == null)
+                echo "null data\n";
+            print_r($this->data);
+        }
+    }
+
+    /**
+     * Проверяет правильность подписи
+     * @return bool - одобрена ли подпись
+     */
+    function approveSig() {
+        $hash = md5($_POST['cmd'] . $_POST['data'] . 'solt');
+        if($hash == $_POST['sig']) {
+            return true;
+        } else {
+            $this->result['error'] .= '|sig failed';
+            return false;
+        }
     }
 
     /**
@@ -93,10 +108,15 @@ class Exchange
         if (count($this->result) == 0) {
             $this->result["error"] .= "|empty result";
         }
-        echo "result\n" . json_encode($this->result);
-        echo "\n\npretty result\n";
-        foreach ($this->result as $res) {
-            echo json_encode($res) . "\n";
+        if(DEBUG) {
+            echo "result\n";
+        }
+        echo json_encode($this->result);
+        if(DEBUG) {
+            echo "\n\npretty result\n";
+            foreach ($this->result as $res) {
+                echo json_encode($res) . "\n";
+            }
         }
         // иначе неправильно отдается JSON с большой вложенностью (например getProducts)
         exit;
