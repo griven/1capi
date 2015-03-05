@@ -5,6 +5,8 @@ define ("TV_MIN_INFO", true);       // определяет отдавать м�
 define ("PRODUCT_TEMPLATE", 4);     // id шаблона товара
 define ("CATALOG_TEMPLATE", 3);     // id шаблона каталога
 define ("START_DEL_ID", 43);        // id ресурса,начиная с которого можно удалять ресурсы
+define ("DEBUG", true);             // флаг отладки
+define ("SOLT", 'solt');            // соль для hash функции
 
 $exchange = new Exchange($modx);
 
@@ -14,6 +16,7 @@ class Exchange
 
     public $cmd;    // функция которую требуется запустить
     public $data;   // данные необходимые для функции
+    public $sig;    // подпись
     public $result; // результат работы функции
 
     function __construct(modX &$modx)
@@ -91,8 +94,8 @@ class Exchange
      * @return bool - одобрена ли подпись
      */
     function approveSig() {
-        $hash = md5($_POST['cmd'] . $_POST['data'] . 'solt');
-        if($hash == $_POST['sig']) {
+        $this->sig = md5($_POST['cmd'] . $_POST['data'] . SOLT);
+        if($this->sig == $_POST['sig']) {
             return true;
         } else {
             $this->result['error'] .= '|sig failed';
@@ -109,6 +112,7 @@ class Exchange
             $this->result["error"] .= "|empty result";
         }
         if(DEBUG) {
+            echo "sig ".$this->sig."\n";
             echo "result\n";
         }
         echo json_encode($this->result);
@@ -166,11 +170,14 @@ class Exchange
     }
 
     /**
-     * Получает всех детей базового каталога
+     * Получает всех детей каталога
      */
     function getAllChild()
     {
-        $this->result = $this->modx->getTree(CATALOG_ID);
+        $ids = $this->getIdsFromData();
+        $id = (count($ids) < 1) ? CATALOG_ID : $ids[0];
+
+        $this->result = $this->modx->getTree($id);
     }
 
     /**
@@ -577,10 +584,10 @@ class Exchange
             if(isset($res)) {
                 $tv = $res->getTVValue($this->data['tv']);
                 if(!isset($tv)) {
-                    $this->result[error] .= '|cant find this tv';
+                    $this->result['error'] .= '|cant find this tv';
                 }
             } else {
-                $this->result[error] .= '|cant find this resource';
+                $this->result['error'] .= '|cant find this resource';
             }
 
             if ($filename != '' && isset($tv)) {
@@ -595,10 +602,10 @@ class Exchange
                         $res->setTVValue($this->data['tv'], $filename);
                         array_push($this->result, 'image loaded');
                     } else {
-                        $this->result[error] .= '|cant load the file';
+                        $this->result['error'] .= '|cant load the file';
                     }
                 } else {
-                    $this->result[error] .= '|bad file extension';
+                    $this->result['error'] .= '|bad file extension';
                 }
             }
         }
