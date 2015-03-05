@@ -83,6 +83,7 @@ class Exchange
         $this->data = json_decode($_POST['data'], true);
 
         if(DEBUG) {
+            echo $this->cmd;
             if ($this->data == null)
                 echo "null data\n";
             print_r($this->data);
@@ -155,7 +156,11 @@ class Exchange
      */
     function getCategories()
     {
-        $ids = $this->modx->getChildIds(CATALOG_ID);
+        $ids = $this->getIdsFromData();
+
+        if ($ids == null) {
+            $ids = $this->modx->getChildIds(CATALOG_ID);
+        }
 
         $result = array();
 
@@ -267,12 +272,14 @@ class Exchange
 
         // находим ресурс
         if ($resourceFields['id'] != null) {
+            $isNew = false;
             $resource = $this->modx->getObject($objectType, $resourceFields['id']);
             if ($resource == null) {
                 $this->result["error"] .= "|resource not found";
             }
         } // создаем ресуср
         else {
+            $isNew = true;
             if (array_key_exists('pagetitle', $resourceFields) && array_key_exists('parent', $resourceFields)) {
                 $resource = $this->modx->newObject($objectType);
             } else {
@@ -307,7 +314,7 @@ class Exchange
             $resource->fromArray($resourceArray);
             $resource->save();
             $id = $resource->get('id');
-            $this->result = "$id";
+            $this->result[] = ($isNew) ? $id : true;
 
             // tv параметры
             foreach ($tvs as $tv) {
@@ -414,6 +421,14 @@ class Exchange
         $this->includeShopkeeper();
 
         $ids = $this->getIdsFromData();
+        // если не передан id, получаем все id заказов
+        if(count($ids) < 1) {
+            $orders = $this->modx->getIterator('shk_order');
+            foreach ($orders as $order) {
+                $ids[] = $order->id;
+            }
+        }
+
         foreach($ids as $id) {
             $order = $this->getOrder($id);
             array_push($this->result,$order);
