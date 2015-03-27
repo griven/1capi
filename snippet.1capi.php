@@ -65,6 +65,9 @@ class Exchange
                 case 'putImage':
                     $this->putImage();
                     break;
+                case 'setOrderUploadedTo1c':
+                    $this->setOrderUploadedTo1c();
+                    break;
                 default:
                     $this->result["error"] .= "|command not found";
                     break;
@@ -421,6 +424,8 @@ class Exchange
         $this->includeShopkeeper();
 
         $ids = $this->getIdsFromData();
+        $status = $this->get1cStatusFromData();
+
         // если не передан id, получаем все id заказов
         if(count($ids) < 1) {
             $orders = $this->modx->getIterator('shk_order');
@@ -431,7 +436,9 @@ class Exchange
 
         foreach($ids as $id) {
             $order = $this->getOrder($id);
-            array_push($this->result,$order);
+            if($status === null || (isset($order['uploadedTo1c']) && $order['uploadedTo1c'] === $status)) {
+                array_push($this->result,$order);
+            }
         }
     }
 
@@ -624,5 +631,31 @@ class Exchange
                 }
             }
         }
+    }
+    
+    function setOrderUploadedTo1c() {
+        $this->includeShopkeeper();
+
+        $ids = $this->getIdsFromData();
+        $status = $this->get1cStatusFromData();
+
+        if(isset($status)){
+            foreach($ids as $order_id) {
+                $order = $this->modx->getObject('shk_order',$order_id);
+                if(isset($order)) {
+                    $order->set('uploadedTo1c', $status);
+                    $order->save();
+                    $this->result[0] = true;
+                }
+            }
+        }
+    }
+
+    function get1cStatusFromData() {
+        $status = null;
+        if (isset($this->data['uploadedTo1c'])) {
+            $status = ($this->data['uploadedTo1c'] == 1) ? 1 : 0;
+        }
+        return $status;
     }
 }
