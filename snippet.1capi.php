@@ -68,6 +68,9 @@ class Exchange
                 case 'setOrderUploadedTo1c':
                     $this->setOrderUploadedTo1c();
                     break;
+                case 'getUsers':
+                    $this->getUsers();
+                    break;
                 default:
                     $this->result["error"] .= "|command not found";
                     break;
@@ -146,7 +149,7 @@ class Exchange
 
         foreach ($ids as $id) {
             $productInfo = $this->getProductInfo($id);
-            if (isset($productInfo)) {
+            if (isset($productInfo[0]["isfolder"]) && $productInfo[0]["isfolder"] == 0) {
                 array_push($result, $productInfo);
             }
         }
@@ -632,7 +635,10 @@ class Exchange
             }
         }
     }
-    
+
+    /**
+     * Устанавливает флаг загрузки в 1с
+     */
     function setOrderUploadedTo1c() {
         $this->includeShopkeeper();
 
@@ -651,11 +657,47 @@ class Exchange
         }
     }
 
+    /**
+     * Получает статус загрузки в 1с переданный POSTом
+     * @return int|null
+     */
     function get1cStatusFromData() {
         $status = null;
         if (isset($this->data['uploadedTo1c'])) {
             $status = ($this->data['uploadedTo1c'] == 1) ? 1 : 0;
         }
         return $status;
+    }
+
+    /**
+     * Получает профили пользователей
+    */
+    function getUsers() {
+        $ids = $this->getIdsFromData();
+        
+        if($ids) {
+            foreach($ids as $id) {
+                $user = $this->modx->getObject('modUser', $id);
+                $this->result[] = $this->getUserProfile($user);
+            }
+        } else {
+            $userCollection = $this->modx->getCollection('modUser');
+            foreach($userCollection as $user) {
+                $this->result[] = $this->getUserProfile($user);
+            }
+        }
+    }
+    
+    /**
+     * Получает профиль пользователя из его объекта
+    */
+    function getUserProfile($user) {
+        if($user) {
+            $profile = $user->getOne('Profile');
+            if($profile) {
+                return $profile->toArray();
+            }
+        }
+        return null;
     }
 }
