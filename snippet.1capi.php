@@ -6,7 +6,7 @@ define ("PRODUCT_TEMPLATE", 4);     // id шаблона товара
 define ("CATALOG_TEMPLATE", 3);     // id шаблона каталога
 define ("START_DEL_ID", 43);        // id ресурса,начиная с которого можно удалять ресурсы
 define ("DEBUG", true);             // флаг отладки
-define ("SOLT", 'solt');            // соль для hash функции
+define ("SALT", 'solt');            // соль для hash функции
 
 $exchange = new Exchange($modx);
 
@@ -35,14 +35,14 @@ class Exchange
 
         if($this->approveSig()) {
             switch ($this->cmd) {
-                case 'getProducts':
-                    $this->getProducts();
-                    break;
                 case 'getAllChild':
                     $this->getAllChild();
                     break;
-                case 'delProduct':
-                    $this->delProduct();
+                case 'getProducts':
+                    $this->getResources(false);
+                    break;
+                case 'getCategories':
+                    $this->getResources(true);
                     break;
                 case 'putProduct':
                     $this->putProduct(false);
@@ -50,14 +50,8 @@ class Exchange
                 case 'putProductCategory':
                     $this->putProduct(true);
                     break;
-                case 'getCategories':
-                    $this->getCategories();
-                    break;
-                case 'getOrders':
-                    $this->getOrders();
-                    break;
-                case 'updateOrder':
-                    $this->updateOrder();
+                case 'delProduct':
+                    $this->delProduct();
                     break;
                 case 'getImages':
                     $this->getImages();
@@ -65,12 +59,21 @@ class Exchange
                 case 'putImage':
                     $this->putImage();
                     break;
+
+                case 'getOrders':
+                    $this->getOrders();
+                    break;
+                case 'updateOrder':
+                    $this->updateOrder();
+                    break;
                 case 'setOrderUploadedTo1c':
                     $this->setOrderUploadedTo1c();
                     break;
+
                 case 'getUsers':
                     $this->getUsers();
                     break;
+
                 default:
                     $this->result["error"] .= "|command not found";
                     break;
@@ -101,7 +104,7 @@ class Exchange
      * @return bool - одобрена ли подпись
      */
     function approveSig() {
-        $this->sig = md5($_POST['cmd'] . $_POST['data'] . SOLT);
+        $this->sig = md5($_POST['cmd'] . $_POST['data'] . SALT);
         if($this->sig == $_POST['sig']) {
             return true;
         } else {
@@ -129,15 +132,14 @@ class Exchange
                 echo json_encode($res) . "\n";
             }
         }
-        // иначе неправильно отдается JSON с большой вложенностью (например getProducts)
+        // иначе неправильно отдается JSON с большой вложенностью (например getResources)
         exit;
     }
 
     /**
-     * Функция получения товаров
-     * если в json не указан id, то получает все товары корневого каталога
+     * @param $isFolder - true получить только категории, false только товары
      */
-    function getProducts()
+    function getResources($isFolder)
     {
         $ids = $this->getIdsFromData();
 
@@ -149,30 +151,7 @@ class Exchange
 
         foreach ($ids as $id) {
             $productInfo = $this->getProductInfo($id);
-            if (isset($productInfo[0]["isfolder"]) && $productInfo[0]["isfolder"] == 0) {
-                array_push($result, $productInfo);
-            }
-        }
-
-        $this->result = $result;
-    }
-
-    /**
-     * Функция получения категорий товаров
-     */
-    function getCategories()
-    {
-        $ids = $this->getIdsFromData();
-
-        if ($ids == null) {
-            $ids = $this->modx->getChildIds(CATALOG_ID);
-        }
-
-        $result = array();
-
-        foreach ($ids as $id) {
-            $productInfo = $this->getProductInfo($id);
-            if (isset($productInfo[0]["isfolder"]) && $productInfo[0]["isfolder"] == 1) {
+            if (isset($productInfo[0]["isfolder"]) && $productInfo[0]["isfolder"] == $isFolder) {
                 array_push($result, $productInfo);
             }
         }
@@ -283,7 +262,7 @@ class Exchange
             if ($resource == null) {
                 $this->result["error"] .= "|resource not found";
             }
-        } // создаем ресуср
+        } // создаем ресурс
         else {
             $isNew = true;
             if (array_key_exists('pagetitle', $resourceFields) && array_key_exists('parent', $resourceFields)) {
@@ -356,7 +335,7 @@ class Exchange
             if ($resource == null) {
                 $this->result["error"] .= "|resource not found";
             } else if ($resource->remove() == false) {
-                $this->result["error"] .= '|An error occurred while trying to remove the box!';
+                $this->result["error"] .= '|An error occurred while trying to remove resource!';
             } else {
                 array_push($this->result, "$id deleted");
             }
@@ -548,7 +527,7 @@ class Exchange
      */
     function getImages() {
         $this->result = 'getImages';
-        $this->getProducts();
+        $this->getResources(false);
 
         $products = $this->result;
         $this->result = array();
@@ -687,17 +666,20 @@ class Exchange
             }
         }
     }
-    
+
     /**
      * Получает профиль пользователя из его объекта
-    */
+     * @param $user - объект пользователя
+     * @return array|null
+     */
     function getUserProfile($user) {
+        $result = null;
         if($user) {
             $profile = $user->getOne('Profile');
             if($profile) {
-                return $profile->toArray();
+                $result = $profile->toArray();
             }
         }
-        return null;
+        return $result;
     }
 }
