@@ -20,6 +20,7 @@ putProductCategory - добавление/изменение категории 
 getCategories - получение массива категорий
 getOrders - получение массива заказов
 updateOrder - изменение заказа (обязательный параметр id)
+setOrderUploadedTo1c - изменение флага загрузки в 1с для заказа
 getImages - получение картинок товара и минимальных данных о нем
 putImage - загрузка картинок товара (обязательные параметры id, tv)
 
@@ -70,6 +71,11 @@ result: [true]
 +++updateOrder++
 data: {"id" 1, "price":2400}
 result: [true]
+
+++setOrderUploadedTo1c++
+data: {"id":1, "uploadedTo1c": true} или {"id":1, "uploadedTo1c": 1}
+result
+[true]
 
 +++putImage++
 data: {"id" : 87, "tv":"image"}

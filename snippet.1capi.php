@@ -15,7 +15,7 @@ class Exchange
     private $modx;
     private $data;
 
-    public $result; // результат работы функции
+    private $result; // результат работы функции
 
     function __construct(modX &$modx)
     {
@@ -59,13 +59,16 @@ class Exchange
                     break;
 
                 case 'getOrders':
-                    $this->getOrders();
+                    $order = new Order($this->modx, $this->data);
+                    $this->result = $order->get();
                     break;
                 case 'updateOrder':
-                    $this->updateOrder();
+                    $order = new Order($this->modx, $this->data);
+                    $this->result = $order->updateOrder();
                     break;
                 case 'setOrderUploadedTo1c':
-                    $this->setOrderUploadedTo1c();
+                    $order = new Order($this->modx, $this->data);
+                    $this->result = $order->setOrderUploadedTo1c();
                     break;
 
                 case 'getUsers':
@@ -313,141 +316,6 @@ class Exchange
         }
     }
 
-    /*============================================================
-    * Вторая часть
-    */
-
-    /**
-     * Подключает пакет shopkeeper
-     */
-    function includeShopkeeper() {
-        $modelpath = $this->modx->getOption('core_path') . 'components/shopkeeper3/model/';
-        $this->modx->addPackage( 'shopkeeper3', $modelpath );
-    }
-
-    /**
-     * Получает всю инфу о заказе по его JSON
-     */
-    function getOrders() {
-        $this->includeShopkeeper();
-
-        $ids = $this->getIdsFromData();
-        $status = $this->get1cStatusFromData();
-
-        // если не передан id, получаем все id заказов
-        if(count($ids) < 1) {
-            $orders = $this->modx->getIterator('shk_order');
-            foreach ($orders as $order) {
-                $ids[] = $order->id;
-            }
-        }
-
-        foreach($ids as $id) {
-            $order = $this->getOrder($id);
-            if($status === null || (isset($order['uploadedTo1c']) && $order['uploadedTo1c'] === $status)) {
-                array_push($this->result,$order);
-            }
-        }
-    }
-
-    /**
-     * Получает заказ по его id
-     * @param $order_id - номер заказа
-     * @return array создержащий все поля заказа
-     */
-    function getOrder($order_id) {
-        $order_data = array();
-        if( $order_id ){
-            $order = $this->modx->getObject('shk_order',$order_id);
-            if( $order ){
-                $order_data = $order->toArray();
-                $order_data['purchases'] = $this->getPurchases( $order_id );
-            }
-        }
-
-        return $order_data;
-    }
-
-    /**
-     * Получает конкретные покупки по id заказа
-     * @param $order_id - номер заказа
-     * @return array представление объекта заказа в массиве
-     */
-    function getPurchases( $order_id ){
-        $output = array();
-
-        $query = $this->modx->newQuery('shk_purchases');
-        $query->where( array( 'order_id' => $order_id ) );
-        $query->sortby( 'id', 'asc' );
-        $purchases = $this->modx->getIterator( 'shk_purchases', $query );
-
-        if( $purchases ) {
-            foreach( $purchases as $purchase ){
-                $p_data = $purchase->toArray();
-                if( !empty( $p_data['options'] ) ){
-                    $p_data['options'] = json_decode( $p_data['options'], true );
-                }
-
-                $fields_data = array();
-                if( !empty( $p_data['data'] ) ){
-                    $fields_data = json_decode( $p_data['data'], true );
-                    unset($p_data['data']);
-                }
-
-                $purchase_data = array_merge( $fields_data, $p_data );
-                array_push( $output, $purchase_data );
-            }
-        }
-        return $output;
-    }
-
-    /**
-     * Обновляет заказ
-     */
-    function updateOrder() {
-        if($this->data['id'] > 0) {
-            $this->includeShopkeeper();
-            $order_data = $this->getOrder($this->data['id']);
-
-            if(count($order_data) > 1) {
-                foreach ($this->data as $key=>$value) {
-                    if( array_key_exists($key, $order_data)) {
-                        if($key != 'id' && $key != 'purchases') {
-                            $order_data[$key] = $value;
-                        } else if ($key == 'purchases') {
-                            $order_data = $this->updatePurchases($order_data, $value);
-                        }
-                    }
-                }
-                $order = $this->modx->getObject('shk_order',$this->data['id']);
-                $order->fromArray($order_data);
-                $order->save();
-                $this->result[0] = true;
-            }
-        }
-    }
-
-    /**
-     * Обновляет покупки в заказе
-     * @param array $order_data массив заказа
-     * @param array $new_purchases массив измененных покупок
-     * @return array
-     */
-    function updatePurchases($order_data = array(), $new_purchases = array()) {
-        if (isset($order_data['purchases'])) {
-            foreach ($new_purchases as $id => $new_purchase) {
-                if (isset($order_data['purchases'][$id])) {
-                    foreach ($new_purchase as $key => $value) {
-                        if (array_key_exists($key, $order_data['purchases'][$id]) && $key != 'id' && $key != 'p_id') {
-                            $order_data['purchases'][$id][$key] = $value;
-                        }
-                    }
-                }
-            }
-        }
-        return $order_data;
-    }
-
     /**
      * Получает url картинки и краткую информацию о товаре
      */
@@ -540,39 +408,6 @@ class Exchange
             }
         }
     }
-
-    /**
-     * Устанавливает флаг загрузки в 1с
-     */
-    function setOrderUploadedTo1c() {
-        $this->includeShopkeeper();
-
-        $ids = $this->getIdsFromData();
-        $status = $this->get1cStatusFromData();
-
-        if(isset($status)){
-            foreach($ids as $order_id) {
-                $order = $this->modx->getObject('shk_order',$order_id);
-                if(isset($order)) {
-                    $order->set('uploadedTo1c', $status);
-                    $order->save();
-                    $this->result[0] = true;
-                }
-            }
-        }
-    }
-
-    /**
-     * Получает статус загрузки в 1с переданный POSTом
-     * @return int|null
-     */
-    function get1cStatusFromData() {
-        $status = null;
-        if (isset($this->data['uploadedTo1c'])) {
-            $status = ($this->data['uploadedTo1c'] == 1) ? 1 : 0;
-        }
-        return $status;
-    }
 }
 
 class DataClass
@@ -608,6 +443,10 @@ class DataClass
 
     public function getCmd() {
         return $this->cmd;
+    }
+
+    public function getData() {
+        return $this->data;
     }
 
     /**
@@ -653,6 +492,18 @@ class DataClass
         } else {
             return null;
         }
+    }
+
+    /**
+     * Получает статус загрузки в 1с переданный POSTом
+     * @return int|null
+     */
+    public function get1cStatusFromData() {
+        $status = null;
+        if (isset($this->data['uploadedTo1c'])) {
+            $status = ($this->data['uploadedTo1c'] == 1) ? 1 : 0;
+        }
+        return $status;
     }
 }
 
@@ -703,5 +554,167 @@ class User extends ModxObject{
             }
         }
         return $result;
+    }
+}
+
+class Order extends ModxObject {
+    /**
+     * Получает всю инфу о заказе по его JSON
+     */
+    public function get() {
+        $this->includeShopkeeper();
+
+        $ids = $this->data->getIdsFromData();
+        $status = $this->data->get1cStatusFromData();
+
+        // если не передан id, получаем все id заказов
+        if(count($ids) < 1) {
+            $orders = $this->modx->getIterator('shk_order');
+            foreach ($orders as $order) {
+                $ids[] = $order->id;
+            }
+        }
+
+        $result = array();
+        foreach($ids as $id) {
+            $order = $this->getOrder($id);
+            if($status === null || (isset($order['uploadedTo1c']) && $order['uploadedTo1c'] === $status)) {
+                array_push($result,$order);
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Обновляет заказ
+     */
+    function updateOrder() {
+        $data = $this->data->getData();
+        if($data['id'] > 0) {
+            $this->includeShopkeeper();
+            $order_data = $this->getOrder($data['id']);
+
+            if(count($order_data) > 1) {
+                foreach ($data as $key=>$value) {
+                    if( array_key_exists($key, $order_data)) {
+                        if($key != 'id' && $key != 'purchases') {
+                            $order_data[$key] = $value;
+                        } else if ($key == 'purchases') {
+                            $order_data = $this->updatePurchases($order_data, $value);
+                        }
+                    }
+                }
+                $order = $this->modx->getObject('shk_order',$data['id']);
+                $order->fromArray($order_data);
+                $order->save();
+                $result[0] = true;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Устанавливает флаг загрузки в 1с
+     */
+    function setOrderUploadedTo1c() {
+        $result[0] = false;
+        $this->includeShopkeeper();
+
+        $ids = $this->data->getIdsFromData();
+        $status = $this->data->get1cStatusFromData();
+
+        if(isset($status)){
+            foreach($ids as $order_id) {
+                $order = $this->modx->getObject('shk_order',$order_id);
+                if(isset($order)) {
+                    $order->set('uploadedTo1c', $status);
+                    $order->save();
+                    $result[0] = true;
+                }
+            }
+        }
+        return $result;
+    }
+
+    /**
+     * Подключает пакет shopkeeper
+     */
+    private function includeShopkeeper() {
+        $modelpath = $this->modx->getOption('core_path') . 'components/shopkeeper3/model/';
+        $this->modx->addPackage( 'shopkeeper3', $modelpath );
+    }
+
+    /**
+     * Получает заказ по его id
+     * @param $order_id - номер заказа
+     * @return array создержащий все поля заказа
+     */
+    private function getOrder($order_id) {
+        $order_data = array();
+        if( $order_id ){
+            $order = $this->modx->getObject('shk_order',$order_id);
+            if( $order ){
+                $order_data = $order->toArray();
+                $order_data['purchases'] = $this->getPurchases( $order_id );
+            }
+        }
+
+        return $order_data;
+    }
+
+    /**
+     * Получает конкретные покупки по id заказа
+     * @param $order_id - номер заказа
+     * @return array представление объекта заказа в массиве
+     */
+    private function getPurchases( $order_id ){
+        $output = array();
+
+        $query = $this->modx->newQuery('shk_purchases');
+        $query->where( array( 'order_id' => $order_id ) );
+        $query->sortby( 'id', 'asc' );
+        $purchases = $this->modx->getIterator( 'shk_purchases', $query );
+
+        if( $purchases ) {
+            foreach( $purchases as $purchase ){
+                $p_data = $purchase->toArray();
+                if( !empty( $p_data['options'] ) ){
+                    $p_data['options'] = json_decode( $p_data['options'], true );
+                }
+
+                $fields_data = array();
+                if( !empty( $p_data['data'] ) ){
+                    $fields_data = json_decode( $p_data['data'], true );
+                    unset($p_data['data']);
+                }
+
+                $purchase_data = array_merge( $fields_data, $p_data );
+                array_push( $output, $purchase_data );
+            }
+        }
+        return $output;
+    }
+
+    /**
+     * Обновляет покупки в заказе
+     * @param array $order_data массив заказа
+     * @param array $new_purchases массив измененных покупок
+     * @return array
+     */
+    private function updatePurchases($order_data = array(), $new_purchases = array()) {
+        if (isset($order_data['purchases'])) {
+            foreach ($new_purchases as $id => $new_purchase) {
+                if (isset($order_data['purchases'][$id])) {
+                    foreach ($new_purchase as $key => $value) {
+                        if (array_key_exists($key, $order_data['purchases'][$id]) && $key != 'id' && $key != 'p_id') {
+                            $order_data['purchases'][$id][$key] = $value;
+                        }
+                    }
+                }
+            }
+        }
+        return $order_data;
     }
 }
