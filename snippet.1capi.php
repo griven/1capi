@@ -12,11 +12,9 @@ $exchange = new Exchange($modx);
 
 class Exchange
 {
-    public $modx;
+    private $modx;
+    private $data;
 
-    public $cmd;    // функция которую требуется запустить
-    public $data;   // данные необходимые для функции
-    public $sig;    // подпись
     public $result; // результат работы функции
 
     function __construct(modX &$modx)
@@ -31,10 +29,10 @@ class Exchange
      */
     function process()
     {
-        $this->getPostData();
+        $this->data = new DataClass();
 
-        if($this->approveSig()) {
-            switch ($this->cmd) {
+        if($this->data->approveSig()) {
+            switch ($this->data->getCmd()) {
                 case 'getAllChild':
                     $this->getAllChild();
                     break;
@@ -71,46 +69,19 @@ class Exchange
                     break;
 
                 case 'getUsers':
-                    $this->getUsers();
+                    $user = new User($this->modx, $this->data);
+                    $this->result = $user->get();
                     break;
 
                 default:
                     $this->result["error"] .= "|command not found";
                     break;
             }
+        } else {
+            $this->result['error'] .= '|sig failed';
         }
 
         $this->response();
-    }
-
-    /**
-     * Разбирает полученные данные
-     */
-    function getPostData()
-    {
-        $this->cmd = $_POST['cmd'];
-        $this->data = json_decode($_POST['data'], true);
-
-        if(DEBUG) {
-            echo $this->cmd;
-            if ($this->data == null)
-                echo "null data\n";
-            print_r($this->data);
-        }
-    }
-
-    /**
-     * Проверяет правильность подписи
-     * @return bool - одобрена ли подпись
-     */
-    function approveSig() {
-        $this->sig = md5($_POST['cmd'] . $_POST['data'] . SALT);
-        if($this->sig == $_POST['sig']) {
-            return true;
-        } else {
-            $this->result['error'] .= '|sig failed';
-            return false;
-        }
     }
 
     /**
@@ -339,51 +310,6 @@ class Exchange
             } else {
                 array_push($this->result, "$id deleted");
             }
-        }
-    }
-
-    /**
-     * Получает id в виде массива из JSON
-     * @return null или массив id
-     */
-    function getIdsFromData()
-    {
-        $ids = array();
-        if (isset($this->data['id'])) {
-            if (is_array($this->data['id'])) {
-                $ids = $this->data['id'];
-            } else {
-                array_push($ids, $this->data['id']);
-            }
-        } else {
-            $ids = null;
-        }
-        return $ids;
-    }
-
-    /**
-     * Получает поля(переменные) ресурса
-     * @return array ассоциативный массив полей ресурса
-     */
-    function getResourceFields()
-    {
-        if (isset($this->data[0])) {
-            return $this->data[0];
-        } else {
-            return null;
-        }
-    }
-
-    /**
-     * Получает переменные шаблона
-     * @return array ассоциативный массив полей ресурса
-     */
-    function getTemplateVariables()
-    {
-        if (isset($this->data[1])) {
-            return $this->data[1];
-        } else {
-            return null;
         }
     }
 
@@ -647,24 +573,120 @@ class Exchange
         }
         return $status;
     }
+}
+
+class DataClass
+{
+    private $cmd;    // функция которую требуется запустить
+    private $data;   // данные необходимые для функции
+    private $sig;    // подпись
 
     /**
+     * Разбирает полученные данные
+     */
+    public function __construct()
+    {
+        $this->cmd = $_POST['cmd'];
+        $this->data = json_decode($_POST['data'], true);
+
+        if(DEBUG) {
+            echo $this->cmd;
+            if ($this->data == null)
+                echo "null data\n";
+            print_r($this->data);
+        }
+    }
+
+    /**
+     * Проверяет правильность подписи
+     * @return bool - одобрена ли подпись
+     */
+    public function approveSig() {
+        $this->sig = md5($_POST['cmd'] . $_POST['data'] . SALT);
+        return ($this->sig == $_POST['sig']);
+    }
+
+    public function getCmd() {
+        return $this->cmd;
+    }
+
+    /**
+     * Получает id в виде массива из JSON
+     * @return null или массив id
+     */
+    public function getIdsFromData()
+    {
+        $ids = array();
+        if (isset($this->data['id'])) {
+            if (is_array($this->data['id'])) {
+                $ids = $this->data['id'];
+            } else {
+                array_push($ids, $this->data['id']);
+            }
+        } else {
+            $ids = null;
+        }
+        return $ids;
+    }
+
+    /**
+     * Получает поля(переменные) ресурса
+     * @return array ассоциативный массив полей ресурса
+     */
+    public function getResourceFields()
+    {
+        if (isset($this->data[0])) {
+            return $this->data[0];
+        } else {
+            return null;
+        }
+    }
+
+    /**
+     * Получает переменные шаблона
+     * @return array ассоциативный массив полей ресурса
+     */
+    public function getTemplateVariables()
+    {
+        if (isset($this->data[1])) {
+            return $this->data[1];
+        } else {
+            return null;
+        }
+    }
+}
+
+abstract class ModxObject{
+    protected $modx;
+    protected $data;
+
+    public function __construct(modX &$modx, DataClass &$data){
+        $this->modx = &$modx;
+        $this->data = &$data;
+    }
+    abstract public function get();
+}
+
+class User extends ModxObject{
+    /**
      * Получает профили пользователей
-    */
-    function getUsers() {
-        $ids = $this->getIdsFromData();
-        
+     */
+    public function get() {
+        $ids = $this->data->getIdsFromData();
+
         if($ids) {
             foreach($ids as $id) {
                 $user = $this->modx->getObject('modUser', $id);
-                $this->result[] = $this->getUserProfile($user);
+                $result[] = $this->getUserProfile($user);
             }
         } else {
             $userCollection = $this->modx->getCollection('modUser');
             foreach($userCollection as $user) {
-                $this->result[] = $this->getUserProfile($user);
+                $result[] = $this->getUserProfile($user);
             }
         }
+
+        return $result;
     }
 
     /**
@@ -672,7 +694,7 @@ class Exchange
      * @param $user - объект пользователя
      * @return array|null
      */
-    function getUserProfile($user) {
+    private function getUserProfile($user) {
         $result = null;
         if($user) {
             $profile = $user->getOne('Profile');
