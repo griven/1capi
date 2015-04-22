@@ -4,7 +4,6 @@ define ("CATALOG_ID", 14);          // id ресурса корня катало
 define ("TV_MIN_INFO", true);       // определяет отдавать минимально необходимую инфу (true) или всю(false)
 define ("PRODUCT_TEMPLATE", 4);     // id шаблона товара
 define ("CATALOG_TEMPLATE", 3);     // id шаблона каталога
-define ("START_DEL_ID", 43);        // id ресурса,начиная с которого можно удалять ресурсы
 define ("DEBUG", true);             // флаг отладки
 define ("SALT", 'solt');            // соль для hash функции
 
@@ -20,6 +19,7 @@ class Exchange
     function __construct(modX &$modx)
     {
         $this->modx = &$modx;
+        $this->data = new DataClass();
         $this->result = array();
         $this->process();
     }
@@ -29,33 +29,39 @@ class Exchange
      */
     function process()
     {
-        $this->data = new DataClass();
-
         if($this->data->approveSig()) {
             switch ($this->data->getCmd()) {
                 case 'getAllChild':
-                    $this->getAllChild();
+                    $resource = new Resource($this->modx, $this->data);
+                    $this->result = $resource->getAllChild();
                     break;
                 case 'getProducts':
-                    $this->getResources(false);
+                    $resource = new Resource($this->modx, $this->data, false);
+                    $this->result = $resource->get();
                     break;
                 case 'getCategories':
-                    $this->getResources(true);
+                    $resource = new Resource($this->modx, $this->data, true);
+                    $this->result = $resource->get();
                     break;
                 case 'putProduct':
-                    $this->putProduct(false);
+                    $resource = new Resource($this->modx, $this->data, false);
+                    $this->result = $resource->putProduct();
                     break;
                 case 'putProductCategory':
-                    $this->putProduct(true);
+                    $resource = new Resource($this->modx, $this->data, true);
+                    $this->result = $resource->putProduct();
                     break;
                 case 'delProduct':
-                    $this->delProduct();
+                    $resource = new Resource($this->modx, $this->data);
+                    $this->result = $resource->delProduct();
                     break;
                 case 'getImages':
-                    $this->getImages();
+                    $resource = new Resource($this->modx, $this->data,true);
+                    $this->result = $resource->getImages();
                     break;
                 case 'putImage':
-                    $this->putImage();
+                    $resource = new Resource($this->modx, $this->data,true);
+                    $this->result = $resource->putImage();
                     break;
 
                 case 'getOrders':
@@ -96,7 +102,7 @@ class Exchange
             $this->result["error"] .= "|empty result";
         }
         if(DEBUG) {
-            echo "sig ".$this->sig."\n";
+            echo "sig ".$this->data->getSig()."\n";
             echo "result\n";
         }
         echo json_encode($this->result);
@@ -108,305 +114,6 @@ class Exchange
         }
         // иначе неправильно отдается JSON с большой вложенностью (например getResources)
         exit;
-    }
-
-    /**
-     * @param $isFolder - true получить только категории, false только товары
-     */
-    function getResources($isFolder)
-    {
-        $ids = $this->getIdsFromData();
-
-        if ($ids == null) {
-            $ids = $this->modx->getChildIds(CATALOG_ID);
-        }
-
-        $result = array();
-
-        foreach ($ids as $id) {
-            $productInfo = $this->getProductInfo($id);
-            if (isset($productInfo[0]["isfolder"]) && $productInfo[0]["isfolder"] == $isFolder) {
-                array_push($result, $productInfo);
-            }
-        }
-
-        $this->result = $result;
-    }
-
-    /**
-     * Получает всех детей каталога
-     */
-    function getAllChild()
-    {
-        $ids = $this->getIdsFromData();
-        $id = (count($ids) < 1) ? CATALOG_ID : $ids[0];
-
-        $this->result = $this->modx->getTree($id);
-    }
-
-    /**
-     * Получает информацию о ресурсе по его id
-     * @param $id - номер ресурса информацию о котором нужно узнать
-     * @return null|array состояющий из массива resource fields и массива template variables
-     */
-    function getProductInfo($id)
-    {
-        $rfs = $this->getAllResourceFields($id);
-        if (isset($rfs)) {
-            $tvs = $this->getAllTemplateVars($id);
-            $result = array($rfs, $tvs);
-        } else {
-            $result = null;
-        }
-        return $result;
-    }
-
-    /**
-     * Получает все поля ресурса resource fields по его id
-     * @param $id - номер ресурса информацию о котором нужно узнать
-     * @return array|null массив содержащий resource fields
-     */
-    function getAllResourceFields($id)
-    {
-        $resource = $this->modx->getObject('modResource', $id);
-        if ($resource) {
-            $result = $resource->toArray();
-        } else {
-            $result = null;
-        }
-        return $result;
-    }
-
-    /**
-     * Получает все TV ресурса по его id
-     * @param $id - номер ресурса информацию о котором нужно узнать
-     * @return array|null массив содержащий template variables
-     */
-    function getAllTemplateVars($id)
-    {
-        $resource = $this->modx->getObject('modResource', $id);
-        if ($resource) {
-            $tvs = $resource->getMany('TemplateVars');
-            $result = array();
-            foreach ($tvs as $tv) {
-                $tv_param = array();
-                if (TV_MIN_INFO) {
-                    $tv_param['name'] = $tv->get('name');
-                    $tv_param['type'] = $tv->get('type');
-                    $tv_param['value'] = $tv->get('value');
-                    $tv_param['source'] = $tv->get('source');
-                } else {
-                    $tv_param = $tv->toArray();
-                }
-                array_push($result, $tv_param);
-            }
-        } else {
-            $result = null;
-        }
-        return $result;
-    }
-
-    /**
-     * Создает или обновляет ресурс
-     * @param $isCategory - создать категорию или же просто товар
-     */
-    function putProduct($isCategory = false)
-    {
-        $resourceFields = $this->getResourceFields();
-        $tvs = $this->getTemplateVariables();
-
-        $this->createOrUpdateResource($resourceFields, $tvs, $isCategory);
-    }
-
-    /**
-     * Создает новый ресурс или обновляет старый с параметрами взятыми из JSON
-     * @param $resourceFields - массив полей ресурсов (id, template и т.п.)
-     * @param $tvs - массив полей шаблона (tv)
-     * @param $isCategory - true- категория, false продукт
-     */
-    // for test [{"parent":15, "pagetitle": "test"},[{"name":"keywords","value":"container"}, {"name":"meta_title","value":"collection"}] ]
-    function createOrUpdateResource($resourceFields, $tvs, $isCategory)
-    {
-        $objectType = ($isCategory) ? 'CollectionContainer' : 'modResource';
-
-        // находим ресурс
-        if ($resourceFields['id'] != null) {
-            $isNew = false;
-            $resource = $this->modx->getObject($objectType, $resourceFields['id']);
-            if ($resource == null) {
-                $this->result["error"] .= "|resource not found";
-            }
-        } // создаем ресурс
-        else {
-            $isNew = true;
-            if (array_key_exists('pagetitle', $resourceFields) && array_key_exists('parent', $resourceFields)) {
-                $resource = $this->modx->newObject($objectType);
-            } else {
-                $this->result["error"] .= "|pagetitle or parent not found";
-            }
-        }
-
-        if (isset($resource)) {
-            // стандартные параметры
-            $resourceArray = $resource->toArray();
-            $resourceArray['published'] = 1;
-            $resourceArray['publishedon'] = date('Y-m-d H:i:s');
-
-            if ($isCategory) {
-                $resourceArray['isfolder'] = 1;
-                $resourceArray['template'] = CATALOG_TEMPLATE;
-                $resourceArray['show_in_tree'] = 1;
-            } else {
-                $resourceArray['isfolder'] = 0;
-                $resourceArray['template'] = PRODUCT_TEMPLATE;
-                $resourceArray['show_in_tree'] = 0;
-            }
-
-            // полученные из JSON параметры
-            foreach ($resourceFields as $key => $value) {
-                if (array_key_exists($key, $resourceArray) && $key != 'id') {
-                    $resourceArray[$key] = $value;
-                }
-            }
-
-            // сохраненяем ресурс и получяем id
-            $resource->fromArray($resourceArray);
-            $resource->save();
-            $id = $resource->get('id');
-            $this->result[] = ($isNew) ? $id : true;
-
-            // tv параметры
-            foreach ($tvs as $tv) {
-                if (isset($tv['name']) && isset($tv['value'])) {
-                    $resource->setTVValue($tv["name"], $tv["value"]);
-                }
-            }
-        }
-    }
-
-    /**
-     * удаляет ресурсы
-     */
-    function delProduct()
-    {
-        $ids = $this->getIdsFromData();
-        if (is_array($ids)) {
-            foreach ($ids as $id) {
-                $this->removeResource($id);
-            }
-        }
-    }
-
-    /**
-     * удаляет ресурс по его id
-     * @param $id - номер ресурса
-     */
-    function removeResource($id)
-    {
-        // условие чисто для разработки (чтобы лишнее не поудалять)
-        if ($id > START_DEL_ID) {
-            $resource = $this->modx->getObject('modResource', $id);
-            if ($resource == null) {
-                $this->result["error"] .= "|resource not found";
-            } else if ($resource->remove() == false) {
-                $this->result["error"] .= '|An error occurred while trying to remove resource!';
-            } else {
-                array_push($this->result, "$id deleted");
-            }
-        }
-    }
-
-    /**
-     * Получает url картинки и краткую информацию о товаре
-     */
-    function getImages() {
-        $this->result = 'getImages';
-        $this->getResources(false);
-
-        $products = $this->result;
-        $this->result = array();
-
-        for($i = 0; $i<count($products); $i++) {
-            if (isset($products[$i][1])) {
-                foreach ($products[$i][1] as $id => $tv) {
-                    if (isset($tv['type']) && $tv['type'] == 'image') {
-                        $file_source = ($tv['source'] == 2) ? 'userfiles/' : '';
-                        if ($tv['value']) {
-                            $tv['full_url'] = MODX_SITE_URL . $file_source . $tv['value'];
-                        } else {
-                            $tv['full_url'] = '';
-                        }
-                        $products[$i][1][$id] = $tv;
-                    } else {
-                        unset($products[$i][1][$id]);
-                    }
-                }
-            }
-        }
-
-        $this->result = $this->cutProductInfo($products);
-    }
-
-    /**
-     * Обрезает ненужную инфу о товаре
-     * @param array $products - массив товаров
-     * @return array - обработанный массив товаров
-     */
-    function cutProductInfo($products = array()) {
-        $neededKeys = array('id', 'pagetitle', 'uri');
-        for($i = 0; $i<count($products); $i++) {
-            if(isset($products[$i][0])) {
-                foreach ($products[$i][0] as $key=>$value) {
-                    if(!in_array($key,$neededKeys))
-                        unset($products[$i][0][$key]);
-                }
-            }
-        }
-
-        return $products;
-    }
-
-    /**
-     * Загружает картинку и вставляет её в TV определенного ресурса
-     */
-    function putImage()
-    {
-        if (isset($this->data['id']) && isset($this->data['tv'])) {
-            $ext_array = array('gif', 'jpg', 'jpeg', 'png');
-            $uploaddir = MODX_BASE_PATH . 'userfiles/';
-            $filename = basename($_FILES['file']['name']);
-
-            $ext = pathinfo($filename, PATHINFO_EXTENSION);
-
-            $res = $this->modx->getObject('modResource',$this->data['id']);
-            if(isset($res)) {
-                $tv = $res->getTVValue($this->data['tv']);
-                if(!isset($tv)) {
-                    $this->result['error'] .= '|cant find this tv';
-                }
-            } else {
-                $this->result['error'] .= '|cant find this resource';
-            }
-
-            if ($filename != '' && isset($tv)) {
-                if (in_array($ext, $ext_array)) {
-                    // Делаем уникальное имя файла
-                    $filename = mb_strtolower($filename);
-                    $filename = str_replace(' ', '_', $filename);
-                    $filename = date("Ymdgi") . $filename;
-
-                    $uploadfile = $uploaddir . $filename;
-                    if (move_uploaded_file($_FILES['file']['tmp_name'], $uploadfile)) {
-                        $res->setTVValue($this->data['tv'], $filename);
-                        array_push($this->result, 'image loaded');
-                    } else {
-                        $this->result['error'] .= '|cant load the file';
-                    }
-                } else {
-                    $this->result['error'] .= '|bad file extension';
-                }
-            }
-        }
     }
 }
 
@@ -447,6 +154,15 @@ class DataClass
 
     public function getData() {
         return $this->data;
+    }
+
+    public function getSig() {
+        if(DEBUG) {
+            $result = $this->sig;
+        } else {
+            $result = "|can't get sig";
+        }
+        return $result;
     }
 
     /**
@@ -525,6 +241,7 @@ class User extends ModxObject{
     public function get() {
         $ids = $this->data->getIdsFromData();
 
+        $result = array();
         if($ids) {
             foreach($ids as $id) {
                 $user = $this->modx->getObject('modUser', $id);
@@ -590,6 +307,7 @@ class Order extends ModxObject {
      * Обновляет заказ
      */
     function updateOrder() {
+        $result[0] = false;
         $data = $this->data->getData();
         if($data['id'] > 0) {
             $this->includeShopkeeper();
@@ -716,5 +434,320 @@ class Order extends ModxObject {
             }
         }
         return $order_data;
+    }
+}
+
+class Resource extends ModxObject {
+    private $isFolder;
+
+    public function __construct(modX &$modx, DataClass &$data, $isFolder = false) {
+        parent::__construct($modx, $data);
+        $this->isFolder = $isFolder;
+    }
+    
+    public function get()
+    {
+        $ids = $this->data->getIdsFromData();
+
+        if ($ids == null) {
+            $ids = $this->modx->getChildIds(CATALOG_ID);
+        }
+
+        $result = array();
+
+        foreach ($ids as $id) {
+            $productInfo = $this->getProductInfo($id);
+            if (isset($productInfo[0]["isfolder"]) && $productInfo[0]["isfolder"] == $this->isFolder) {
+                array_push($result, $productInfo);
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Получает всех детей каталога
+     */
+    public function getAllChild()
+    {
+        $ids = $this->data->getIdsFromData();
+        $id = (count($ids) < 1) ? CATALOG_ID : $ids[0];
+
+        return $this->modx->getTree($id);
+    }
+
+    /**
+     * Создает или обновляет ресурс
+     */
+    public function putProduct()
+    {
+        $resourceFields = $this->data->getResourceFields();
+        $tvs = $this->data->getTemplateVariables();
+
+        $result = $this->createOrUpdateResource($resourceFields, $tvs);
+        return $result;
+    }
+
+    /**
+     * удаляет ресурсы
+     */
+    public function delProduct()
+    {
+        $result = array();
+        $ids = $this->data->getIdsFromData();
+        if (is_array($ids)) {
+            foreach ($ids as $id) {
+                $result[] = $this->removeResource($id);
+            }
+        }
+        return $result;
+    }
+
+    /**
+     * Получает url картинки и краткую информацию о товаре
+     */
+    public function getImages() {
+        $products = $this->get(false);
+
+        for($i = 0; $i<count($products); $i++) {
+            if (isset($products[$i][1])) {
+                foreach ($products[$i][1] as $id => $tv) {
+                    if (isset($tv['type']) && $tv['type'] == 'image') {
+                        $file_source = ($tv['source'] == 2) ? 'userfiles/' : '';
+                        if ($tv['value']) {
+                            $tv['full_url'] = MODX_SITE_URL . $file_source . $tv['value'];
+                        } else {
+                            $tv['full_url'] = '';
+                        }
+                        $products[$i][1][$id] = $tv;
+                    } else {
+                        unset($products[$i][1][$id]);
+                    }
+                }
+            }
+        }
+
+        $result = $this->cutProductInfo($products);
+        return $result;
+    }
+
+    /**
+     * Загружает картинку и вставляет её в TV определенного ресурса
+     */
+    public function putImage()
+    {
+        $result = array();
+        $data = $this->data->getData();
+
+        if (isset($data['id']) && isset($data['tv'])) {
+            $ext_array = array('gif', 'jpg', 'jpeg', 'png');
+            $uploaddir = MODX_BASE_PATH . 'userfiles/';
+            $filename = basename($_FILES['file']['name']);
+
+            $ext = pathinfo($filename, PATHINFO_EXTENSION);
+
+            $res = $this->modx->getObject('modResource',$data['id']);
+            if(isset($res)) {
+                $tv = $res->getTVValue($data['tv']);
+                if(!isset($tv)) {
+                    $result['error'] .= '|cant find this tv';
+                }
+            } else {
+                $result['error'] .= '|cant find this resource';
+            }
+
+            if ($filename != '' && isset($tv)) {
+                if (in_array($ext, $ext_array)) {
+                    // Делаем уникальное имя файла
+                    $filename = mb_strtolower($filename);
+                    $filename = str_replace(' ', '_', $filename);
+                    $filename = date("Ymdgi") . $filename;
+
+                    $uploadfile = $uploaddir . $filename;
+                    if (move_uploaded_file($_FILES['file']['tmp_name'], $uploadfile)) {
+                        $res->setTVValue($data['tv'], $filename);
+                        $result[] = 'image loaded';
+                    } else {
+                        $result['error'] .= '|cant load the file';
+                    }
+                } else {
+                    $result['error'] .= '|bad file extension';
+                }
+            }
+        } else {
+            $result['error'] .= '|id or tv not found';
+        }
+
+        return $result;
+    }
+
+    /**
+     * Получает информацию о ресурсе по его id
+     * @param $id - номер ресурса информацию о котором нужно узнать
+     * @return null|array состояющий из массива resource fields и массива template variables
+     */
+    private function getProductInfo($id)
+    {
+        $rfs = $this->getAllResourceFields($id);
+        if (isset($rfs)) {
+            $tvs = $this->getAllTemplateVars($id);
+            $result = array($rfs, $tvs);
+        } else {
+            $result = null;
+        }
+        return $result;
+    }
+
+    /**
+     * Получает все поля ресурса resource fields по его id
+     * @param $id - номер ресурса информацию о котором нужно узнать
+     * @return array|null массив содержащий resource fields
+     */
+    private function getAllResourceFields($id)
+    {
+        $resource = $this->modx->getObject('modResource', $id);
+        if ($resource) {
+            $result = $resource->toArray();
+        } else {
+            $result = null;
+        }
+        return $result;
+    }
+
+    /**
+     * Получает все TV ресурса по его id
+     * @param $id - номер ресурса информацию о котором нужно узнать
+     * @return array|null массив содержащий template variables
+     */
+    private function getAllTemplateVars($id)
+    {
+        $resource = $this->modx->getObject('modResource', $id);
+        if ($resource) {
+            $tvs = $resource->getMany('TemplateVars');
+            $result = array();
+            foreach ($tvs as $tv) {
+                $tv_param = array();
+                if (TV_MIN_INFO) {
+                    $tv_param['name'] = $tv->get('name');
+                    $tv_param['type'] = $tv->get('type');
+                    $tv_param['value'] = $tv->get('value');
+                    $tv_param['source'] = $tv->get('source');
+                } else {
+                    $tv_param = $tv->toArray();
+                }
+                array_push($result, $tv_param);
+            }
+        } else {
+            $result = null;
+        }
+        return $result;
+    }
+
+    /**
+     * Создает новый ресурс или обновляет старый с параметрами взятыми из JSON
+     * @param $resourceFields - массив полей ресурсов (id, template и т.п.)
+     * @param $tvs - массив полей шаблона (tv)
+     * @return array
+     */
+    // for test [{"parent":15, "pagetitle": "test"},[{"name":"keywords","value":"container"}, {"name":"meta_title","value":"collection"}] ]
+    private function createOrUpdateResource($resourceFields, $tvs)
+    {
+        $objectType = ($this->isFolder) ? 'CollectionContainer' : 'modResource';
+
+        $result = array();
+        // находим ресурс
+        if ($resourceFields['id'] != null) {
+            $isNew = false;
+            $resource = $this->modx->getObject($objectType, $resourceFields['id']);
+            if ($resource == null) {
+                $result["error"] .= "|resource not found";
+            }
+        } // создаем ресурс
+        else {
+            $isNew = true;
+            if (array_key_exists('pagetitle', $resourceFields) && array_key_exists('parent', $resourceFields)) {
+                $resource = $this->modx->newObject($objectType);
+            } else {
+                $result["error"] .= "|pagetitle or parent not found";
+            }
+        }
+
+        if (isset($resource)) {
+            // стандартные параметры
+            $resourceArray = $resource->toArray();
+            $resourceArray['published'] = 1;
+            $resourceArray['publishedon'] = date('Y-m-d H:i:s');
+
+            if ($this->isFolder) {
+                $resourceArray['isfolder'] = 1;
+                $resourceArray['template'] = CATALOG_TEMPLATE;
+                $resourceArray['show_in_tree'] = 1;
+            } else {
+                $resourceArray['isfolder'] = 0;
+                $resourceArray['template'] = PRODUCT_TEMPLATE;
+                $resourceArray['show_in_tree'] = 0;
+            }
+
+            // полученные из JSON параметры
+            foreach ($resourceFields as $key => $value) {
+                if (array_key_exists($key, $resourceArray) && $key != 'id') {
+                    $resourceArray[$key] = $value;
+                }
+            }
+
+            // сохраненяем ресурс и получяем id
+            $resource->fromArray($resourceArray);
+            $resource->save();
+            $id = $resource->get('id');
+            $result[] = ($isNew) ? $id : true;
+
+            // tv параметры
+            foreach ($tvs as $tv) {
+                if (isset($tv['name']) && isset($tv['value'])) {
+                    $resource->setTVValue($tv["name"], $tv["value"]);
+                }
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * удаляет ресурс по его id
+     * @param $id - номер ресурса
+     * @return mixed - сообщение об удалении или ошибке
+     */
+    private function removeResource($id)
+    {
+        $result = array();
+        $resource = $this->modx->getObject('modResource', $id);
+        if ($resource == null) {
+            $result["error"] .= "|resource $id not found";
+        } else if ($resource->remove() == false) {
+            $result["error"] .= "|An error occurred while trying to remove resource $id !";
+        } else {
+            $result = "$id deleted";
+        }
+
+        return $result;
+    }
+
+    /**
+     * Обрезает ненужную инфу о товаре
+     * @param array $products - массив товаров
+     * @return array - обработанный массив товаров
+     */
+    private function cutProductInfo($products = array()) {
+        $neededKeys = array('id', 'pagetitle', 'uri');
+        for($i = 0; $i<count($products); $i++) {
+            if(isset($products[$i][0])) {
+                foreach ($products[$i][0] as $key=>$value) {
+                    if(!in_array($key,$neededKeys))
+                        unset($products[$i][0][$key]);
+                }
+            }
+        }
+
+        return $products;
     }
 }
