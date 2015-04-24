@@ -6,6 +6,7 @@ define ("PRODUCT_TEMPLATE", 4);     // id шаблона товара
 define ("CATALOG_TEMPLATE", 3);     // id шаблона каталога
 define ("DEBUG", true);             // флаг отладки
 define ("SALT", 'solt');            // соль для hash функции
+define ("LIMIT", 1500);             // максимальное количество обрабатываемых элементов
 
 $exchange = new Exchange($modx);
 
@@ -16,7 +17,7 @@ class Exchange
 
     private $result; // результат работы функции
 
-    function __construct(modX &$modx)
+    public function __construct(modX &$modx)
     {
         $this->modx = &$modx;
         $this->data = new DataClass();
@@ -27,7 +28,7 @@ class Exchange
     /**
      *  Основная функция
      */
-    function process()
+    private function process()
     {
         if($this->data->approveSig()) {
             switch ($this->data->getCmd()) {
@@ -56,11 +57,11 @@ class Exchange
                     $this->result = $resource->delProduct();
                     break;
                 case 'getImages':
-                    $resource = new Resource($this->modx, $this->data,true);
+                    $resource = new Resource($this->modx, $this->data);
                     $this->result = $resource->getImages();
                     break;
                 case 'putImage':
-                    $resource = new Resource($this->modx, $this->data,true);
+                    $resource = new Resource($this->modx, $this->data);
                     $this->result = $resource->putImage();
                     break;
 
@@ -96,7 +97,7 @@ class Exchange
     /**
      * Функция формирующая ответ JSON
      */
-    function response()
+    private function response()
     {
         if (count($this->result) == 0) {
             $this->result["error"] .= "|empty result";
@@ -167,21 +168,42 @@ class DataClass
 
     /**
      * Получает id в виде массива из JSON
-     * @return null или массив id
+     * @return array|null или массив id
      */
-    public function getIdsFromData()
+    public function getIds()
     {
         $ids = array();
         if (isset($this->data['id'])) {
             if (is_array($this->data['id'])) {
                 $ids = $this->data['id'];
+                asort($ids);
             } else {
-                array_push($ids, $this->data['id']);
+                $ids[] = $this->data['id'];
             }
         } else {
             $ids = null;
         }
         return $ids;
+    }
+
+    public function getLimit() {
+        if (isset($this->data['limit']) && is_numeric($this->data['limit'])) {
+            $limit = $this->data['limit'];
+        } else {
+            $limit = LIMIT;
+        }
+        return $limit;
+    }
+
+    public function hasIdAndLimit() {
+        $result = false;
+        if (isset($this->data['id']) && !is_array($this->data['id'])) {
+            if (isset($this->data['limit']) && is_numeric($this->data['limit'])) {
+                $result = true;
+            }
+        }
+
+        return $result;
     }
 
     /**
@@ -231,27 +253,55 @@ abstract class ModxObject{
         $this->modx = &$modx;
         $this->data = &$data;
     }
-    abstract public function get();
+
+    public function get() {
+        list($ids, $limit) = $this->getIdsAndLimit();
+        return $this->getElements($ids, $limit);
+    }
+
+    abstract protected function getIdsAndLimit();
+    abstract protected function getElements($ids, $limit);
 }
 
 class User extends ModxObject{
+
+    protected function getIdsAndLimit(){
+        $ids = $this->data->getIds();
+        $limit = $this->data->getLimit();
+        $needSlice = $this->data->hasIdAndLimit();
+
+        if(!$ids || $needSlice) {
+            $userCollection = $this->modx->getCollection('modUser');
+            $allIds = array();
+            foreach($userCollection as $user) {
+                $allIds[] = $user->get('id');
+            }
+
+            $key = ($needSlice) ? array_search($ids[0], $allIds) : 0;
+            $allIds = array_slice($allIds,$key);
+
+            $ids = $allIds;
+        }
+
+        return array($ids,$limit);
+    }
+
     /**
      * Получает профили пользователей
+     * @param $ids - номера элементов
+     * @param $limit - ограничение по выборке за раз
+     * @return array - массив данных об элементах
      */
-    public function get() {
-        $ids = $this->data->getIdsFromData();
-
+    protected function getElements($ids, $limit) {
         $result = array();
-        if($ids) {
-            foreach($ids as $id) {
-                $user = $this->modx->getObject('modUser', $id);
-                $result[] = $this->getUserProfile($user);
+
+        foreach($ids as $id) {
+            if($limit-- <= 0) {
+                $result[] = array("next_id", $id);
+                break;
             }
-        } else {
-            $userCollection = $this->modx->getCollection('modUser');
-            foreach($userCollection as $user) {
-                $result[] = $this->getUserProfile($user);
-            }
+            $user = $this->modx->getObject('modUser', $id);
+            $result[] = $this->getProfile($user);
         }
 
         return $result;
@@ -262,7 +312,7 @@ class User extends ModxObject{
      * @param $user - объект пользователя
      * @return array|null
      */
-    private function getUserProfile($user) {
+    private function getProfile($user) {
         $result = null;
         if($user) {
             $profile = $user->getOne('Profile');
@@ -275,28 +325,48 @@ class User extends ModxObject{
 }
 
 class Order extends ModxObject {
-    /**
-     * Получает всю инфу о заказе по его JSON
-     */
-    public function get() {
-        $this->includeShopkeeper();
 
-        $ids = $this->data->getIdsFromData();
-        $status = $this->data->get1cStatusFromData();
+    protected function getIdsAndLimit(){
+        $ids = $this->data->getIds();
+        $limit = $this->data->getLimit();
+        $needSlice = $this->data->hasIdAndLimit();
 
         // если не передан id, получаем все id заказов
-        if(count($ids) < 1) {
+        if(count($ids) < 1 || $needSlice) {
+            $this->includeShopkeeper();
             $orders = $this->modx->getIterator('shk_order');
+            $allIds = array();
             foreach ($orders as $order) {
-                $ids[] = $order->id;
+                $allIds[] = $order->id;
             }
+
+            $key = ($needSlice) ? array_search($ids[0], $allIds) : 0;
+            $allIds = array_slice($allIds,$key);
+
+            $ids = $allIds;
         }
+
+        return array($ids, $limit);
+    }
+
+    /**
+     * Получает всю инфу о заказах
+     * @param $ids - номера элементов
+     * @param $limit - ограничение по выборке за раз
+     * @return array - массив данных об элементах
+     */
+    protected function getElements($ids, $limit) {
+        $status = $this->data->get1cStatusFromData();
 
         $result = array();
         foreach($ids as $id) {
+            if($limit-- <= 0) {
+                $result[] = array("next_id", $id);
+                break;
+            }
             $order = $this->getOrder($id);
             if($status === null || (isset($order['uploadedTo1c']) && $order['uploadedTo1c'] === $status)) {
-                array_push($result,$order);
+                $result[] = $order;
             }
         }
 
@@ -340,7 +410,7 @@ class Order extends ModxObject {
         $result[0] = false;
         $this->includeShopkeeper();
 
-        $ids = $this->data->getIdsFromData();
+        $ids = $this->data->getIds();
         $status = $this->data->get1cStatusFromData();
 
         if(isset($status)){
@@ -440,25 +510,42 @@ class Order extends ModxObject {
 class Resource extends ModxObject {
     private $isFolder;
 
-    public function __construct(modX &$modx, DataClass &$data, $isFolder = false) {
+    public function __construct(modX &$modx, DataClass &$data, $isFolder=null) {
         parent::__construct($modx, $data);
         $this->isFolder = $isFolder;
     }
-    
-    public function get()
-    {
-        $ids = $this->data->getIdsFromData();
 
-        if ($ids == null) {
-            $ids = $this->modx->getChildIds(CATALOG_ID);
+    protected function getIdsAndLimit(){
+        $ids = $this->data->getIds();
+        $limit = $this->data->getLimit();
+        $needSlice = $this->data->hasIdAndLimit();
+        
+        if (!$ids || $needSlice) {
+            $allIds = $this->modx->getChildIds(CATALOG_ID);
+            asort($allIds);
+
+            $key = ($needSlice) ? array_search($ids[0], $allIds) : 0;
+            $allIds = array_slice($allIds,$key);
+
+            $ids = $allIds;
         }
+        
+        return array($ids, $limit);
+    }
 
+    protected function getElements($ids,$limit)
+    {
         $result = array();
-
         foreach ($ids as $id) {
-            $productInfo = $this->getProductInfo($id);
-            if (isset($productInfo[0]["isfolder"]) && $productInfo[0]["isfolder"] == $this->isFolder) {
-                array_push($result, $productInfo);
+            $resource = $this->modx->getObject('modResource', $id);
+            if($resource) {
+                if ($this->isFolder === null || $resource->get('isfolder') == $this->isFolder) {
+                    if($limit-- <= 0) {
+                        $result[] = array("next_id", $id);
+                        break;
+                    }
+                    $result[] = $this->getProductInfo($resource);
+                }
             }
         }
 
@@ -470,7 +557,7 @@ class Resource extends ModxObject {
      */
     public function getAllChild()
     {
-        $ids = $this->data->getIdsFromData();
+        $ids = $this->data->getIds();
         $id = (count($ids) < 1) ? CATALOG_ID : $ids[0];
 
         return $this->modx->getTree($id);
@@ -494,7 +581,7 @@ class Resource extends ModxObject {
     public function delProduct()
     {
         $result = array();
-        $ids = $this->data->getIdsFromData();
+        $ids = $this->data->getIds();
         if (is_array($ids)) {
             foreach ($ids as $id) {
                 $result[] = $this->removeResource($id);
@@ -507,7 +594,7 @@ class Resource extends ModxObject {
      * Получает url картинки и краткую информацию о товаре
      */
     public function getImages() {
-        $products = $this->get(false);
+        $products = $this->get();
 
         for($i = 0; $i<count($products); $i++) {
             if (isset($products[$i][1])) {
@@ -583,63 +670,39 @@ class Resource extends ModxObject {
 
     /**
      * Получает информацию о ресурсе по его id
-     * @param $id - номер ресурса информацию о котором нужно узнать
-     * @return null|array состояющий из массива resource fields и массива template variables
+     * @param $resource - ресурс информацию о котором нужно узнать
+     * @return array состоит из массива resource fields и массива template variables
      */
-    private function getProductInfo($id)
+    private function getProductInfo($resource)
     {
-        $rfs = $this->getAllResourceFields($id);
-        if (isset($rfs)) {
-            $tvs = $this->getAllTemplateVars($id);
-            $result = array($rfs, $tvs);
-        } else {
-            $result = null;
-        }
-        return $result;
-    }
+        $rfs = $result = $resource->toArray();
+        $tvs = $this->getAllTemplateVars($resource);
 
-    /**
-     * Получает все поля ресурса resource fields по его id
-     * @param $id - номер ресурса информацию о котором нужно узнать
-     * @return array|null массив содержащий resource fields
-     */
-    private function getAllResourceFields($id)
-    {
-        $resource = $this->modx->getObject('modResource', $id);
-        if ($resource) {
-            $result = $resource->toArray();
-        } else {
-            $result = null;
-        }
-        return $result;
+        return array($rfs, $tvs);
     }
 
     /**
      * Получает все TV ресурса по его id
-     * @param $id - номер ресурса информацию о котором нужно узнать
-     * @return array|null массив содержащий template variables
+     * @param $resource - ресурс информацию о котором нужно узнать
+     * @return array содержащит template variables
      */
-    private function getAllTemplateVars($id)
+    private function getAllTemplateVars($resource)
     {
-        $resource = $this->modx->getObject('modResource', $id);
-        if ($resource) {
-            $tvs = $resource->getMany('TemplateVars');
-            $result = array();
-            foreach ($tvs as $tv) {
-                $tv_param = array();
-                if (TV_MIN_INFO) {
-                    $tv_param['name'] = $tv->get('name');
-                    $tv_param['type'] = $tv->get('type');
-                    $tv_param['value'] = $tv->get('value');
-                    $tv_param['source'] = $tv->get('source');
-                } else {
-                    $tv_param = $tv->toArray();
-                }
-                array_push($result, $tv_param);
+        $result = array();
+        $tvs = $resource->getMany('TemplateVars');
+        foreach ($tvs as $tv) {
+            $tv_param = array();
+            if (TV_MIN_INFO) {
+                $tv_param['name'] = $tv->get('name');
+                $tv_param['type'] = $tv->get('type');
+                $tv_param['value'] = $tv->get('value');
+                $tv_param['source'] = $tv->get('source');
+            } else {
+                $tv_param = $tv->toArray();
             }
-        } else {
-            $result = null;
+            array_push($result, $tv_param);
         }
+
         return $result;
     }
 
