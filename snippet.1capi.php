@@ -32,6 +32,7 @@ class Exchange
     {
         if($this->data->approveSig()) {
             switch ($this->data->getCmd()) {
+                // класс Resource
                 case 'getAllChild':
                     $resource = new Resource($this->modx, $this->data);
                     $this->result = $resource->getAllChild();
@@ -46,15 +47,23 @@ class Exchange
                     break;
                 case 'putProduct':
                     $resource = new Resource($this->modx, $this->data, false);
-                    $this->result = $resource->putProduct();
+                    $this->result = $resource->put();
                     break;
                 case 'putProductCategory':
                     $resource = new Resource($this->modx, $this->data, true);
-                    $this->result = $resource->putProduct();
+                    $this->result = $resource->put();
                     break;
                 case 'delProduct':
                     $resource = new Resource($this->modx, $this->data);
-                    $this->result = $resource->delProduct();
+                    $this->result = $resource->del();
+                    break;
+                case 'getProductsCount':
+                    $resource = new Resource($this->modx, $this->data, false);
+                    $this->result = $resource->getCount();
+                    break;
+                case 'getCategoriesCount':
+                    $resource = new Resource($this->modx, $this->data, true);
+                    $this->result = $resource->getCount();
                     break;
                 case 'getImages':
                     $resource = new Resource($this->modx, $this->data);
@@ -65,6 +74,7 @@ class Exchange
                     $this->result = $resource->putImage();
                     break;
 
+                // класс Order
                 case 'getOrders':
                     $order = new Order($this->modx, $this->data);
                     $this->result = $order->get();
@@ -77,10 +87,19 @@ class Exchange
                     $order = new Order($this->modx, $this->data);
                     $this->result = $order->setOrderUploadedTo1c();
                     break;
+                case 'getOrdersCount':
+                    $order = new Order($this->modx, $this->data);
+                    $this->result = $order->getCount();
+                    break;
 
+                // класс User
                 case 'getUsers':
                     $user = new User($this->modx, $this->data);
                     $this->result = $user->get();
+                    break;
+                case 'getUsersCount':
+                    $user = new User($this->modx, $this->data);
+                    $this->result = $user->getCount();
                     break;
 
                 default:
@@ -149,14 +168,24 @@ class DataClass
         return ($this->sig == $_POST['sig']);
     }
 
+    /**
+     * Возвращает комманду
+     * @return mixed
+     */
     public function getCmd() {
         return $this->cmd;
     }
 
+    /**
+     * @return mixed - данные переданные в JSON
+     */
     public function getData() {
         return $this->data;
     }
 
+    /**
+     * @return mixed подпись
+     */
     public function getSig() {
         if(DEBUG) {
             $result = $this->sig;
@@ -186,6 +215,9 @@ class DataClass
         return $ids;
     }
 
+    /**
+     * @return int - значение лимита
+     */
     public function getLimit() {
         if (isset($this->data['limit']) && is_numeric($this->data['limit'])) {
             $limit = $this->data['limit'];
@@ -195,6 +227,9 @@ class DataClass
         return $limit;
     }
 
+    /**
+     * @return bool - true,есть и лимит и !один id
+     */
     public function hasIdAndLimit() {
         $result = false;
         if (isset($this->data['id']) && !is_array($this->data['id'])) {
@@ -254,17 +289,50 @@ abstract class ModxObject{
         $this->data = &$data;
     }
 
+    /**
+     * Возвращает информацию об элементах класса
+     * @return mixed
+     */
     public function get() {
         list($ids, $limit) = $this->getIdsAndLimit();
         return $this->getElements($ids, $limit);
     }
 
+    /**
+     * Возвращает количество элемментов класса
+     * @return mixed
+     */
+    abstract public function getCount();
+
+    /**
+     * Получает номера элементов и ограничение по количеству
+     * @return mixed
+     */
     abstract protected function getIdsAndLimit();
+
+    /**
+     * Получает информацию об элементах класса
+     * @param $ids - номера элементов о которых нужно узнать информацию
+     * @param $limit - ограничение количества обрабатываемых элементов
+     * @return mixed - информация об элементах
+     */
     abstract protected function getElements($ids, $limit);
 }
 
 class User extends ModxObject{
 
+    /**
+     * Получает количество пользователей
+     * @return int - количество пользователей
+     */
+    public function getCount() {
+        return $this->modx->getCount('modUser');
+    }
+
+    /**
+     * Получает номера пользователей и ограничение по количеству
+     * @return array
+     */
     protected function getIdsAndLimit(){
         $ids = $this->data->getIds();
         $limit = $this->data->getLimit();
@@ -326,51 +394,13 @@ class User extends ModxObject{
 
 class Order extends ModxObject {
 
-    protected function getIdsAndLimit(){
-        $ids = $this->data->getIds();
-        $limit = $this->data->getLimit();
-        $needSlice = $this->data->hasIdAndLimit();
-
-        // если не передан id, получаем все id заказов
-        if(count($ids) < 1 || $needSlice) {
-            $this->includeShopkeeper();
-            $orders = $this->modx->getIterator('shk_order');
-            $allIds = array();
-            foreach ($orders as $order) {
-                $allIds[] = $order->id;
-            }
-
-            $key = ($needSlice) ? array_search($ids[0], $allIds) : 0;
-            $allIds = array_slice($allIds,$key);
-
-            $ids = $allIds;
-        }
-
-        return array($ids, $limit);
-    }
-
     /**
-     * Получает всю инфу о заказах
-     * @param $ids - номера элементов
-     * @param $limit - ограничение по выборке за раз
-     * @return array - массив данных об элементах
+     * Получает количество заказов
+     * @return int - количество заказов
      */
-    protected function getElements($ids, $limit) {
-        $status = $this->data->get1cStatusFromData();
-
-        $result = array();
-        foreach($ids as $id) {
-            if($limit-- <= 0) {
-                $result[] = array("next_id", $id);
-                break;
-            }
-            $order = $this->getOrder($id);
-            if($status === null || (isset($order['uploadedTo1c']) && $order['uploadedTo1c'] === $status)) {
-                $result[] = $order;
-            }
-        }
-
-        return $result;
+    public function getCount() {
+        $this->includeShopkeeper();
+        return $this->modx->getCount('shk_order');
     }
 
     /**
@@ -423,6 +453,57 @@ class Order extends ModxObject {
                 }
             }
         }
+        return $result;
+    }
+
+    /**
+     * Получает номера заказов и ограничение по количеству
+     * @return array
+     */
+    protected function getIdsAndLimit(){
+        $ids = $this->data->getIds();
+        $limit = $this->data->getLimit();
+        $needSlice = $this->data->hasIdAndLimit();
+
+        // если не передан id, получаем все id заказов
+        if(count($ids) < 1 || $needSlice) {
+            $this->includeShopkeeper();
+            $orders = $this->modx->getIterator('shk_order');
+            $allIds = array();
+            foreach ($orders as $order) {
+                $allIds[] = $order->id;
+            }
+
+            $key = ($needSlice) ? array_search($ids[0], $allIds) : 0;
+            $allIds = array_slice($allIds,$key);
+
+            $ids = $allIds;
+        }
+
+        return array($ids, $limit);
+    }
+
+    /**
+     * Получает всю инфу о заказах
+     * @param $ids - номера элементов
+     * @param $limit - ограничение по выборке за раз
+     * @return array - массив данных об элементах
+     */
+    protected function getElements($ids, $limit) {
+        $status = $this->data->get1cStatusFromData();
+
+        $result = array();
+        foreach($ids as $id) {
+            if($limit-- <= 0) {
+                $result[] = array("next_id", $id);
+                break;
+            }
+            $order = $this->getOrder($id);
+            if($status === null || (isset($order['uploadedTo1c']) && $order['uploadedTo1c'] === $status)) {
+                $result[] = $order;
+            }
+        }
+
         return $result;
     }
 
@@ -515,41 +596,19 @@ class Resource extends ModxObject {
         $this->isFolder = $isFolder;
     }
 
-    protected function getIdsAndLimit(){
-        $ids = $this->data->getIds();
-        $limit = $this->data->getLimit();
-        $needSlice = $this->data->hasIdAndLimit();
-        
-        if (!$ids || $needSlice) {
-            $allIds = $this->modx->getChildIds(CATALOG_ID);
-            asort($allIds);
-
-            $key = ($needSlice) ? array_search($ids[0], $allIds) : 0;
-            $allIds = array_slice($allIds,$key);
-
-            $ids = $allIds;
+    /**
+     * Получает количество ресурсов
+     * @return int - количество ресурсов
+     */
+    public function getCount() {
+        if($this->isFolder !== null) {
+            $where = array(
+                'isfolder' => ($this->isFolder === true) ? 1 : 0,
+            );
+        } else {
+            $where = null;
         }
-        
-        return array($ids, $limit);
-    }
-
-    protected function getElements($ids,$limit)
-    {
-        $result = array();
-        foreach ($ids as $id) {
-            $resource = $this->modx->getObject('modResource', $id);
-            if($resource) {
-                if ($this->isFolder === null || $resource->get('isfolder') == $this->isFolder) {
-                    if($limit-- <= 0) {
-                        $result[] = array("next_id", $id);
-                        break;
-                    }
-                    $result[] = $this->getProductInfo($resource);
-                }
-            }
-        }
-
-        return $result;
+        return $this->modx->getCount('modResource', $where);
     }
 
     /**
@@ -566,7 +625,7 @@ class Resource extends ModxObject {
     /**
      * Создает или обновляет ресурс
      */
-    public function putProduct()
+    public function put()
     {
         $resourceFields = $this->data->getResourceFields();
         $tvs = $this->data->getTemplateVariables();
@@ -578,7 +637,7 @@ class Resource extends ModxObject {
     /**
      * удаляет ресурсы
      */
-    public function delProduct()
+    public function del()
     {
         $result = array();
         $ids = $this->data->getIds();
@@ -663,6 +722,53 @@ class Resource extends ModxObject {
             }
         } else {
             $result['error'] .= '|id or tv not found';
+        }
+
+        return $result;
+    }
+
+    /**
+     * Получает номера ресурсов и ограничение по количеству
+     * @return array
+     */
+    protected function getIdsAndLimit(){
+        $ids = $this->data->getIds();
+        $limit = $this->data->getLimit();
+        $needSlice = $this->data->hasIdAndLimit();
+
+        if (!$ids || $needSlice) {
+            $allIds = $this->modx->getChildIds(CATALOG_ID);
+            asort($allIds);
+
+            $key = ($needSlice) ? array_search($ids[0], $allIds) : 0;
+            $allIds = array_slice($allIds,$key);
+
+            $ids = $allIds;
+        }
+
+        return array($ids, $limit);
+    }
+
+    /**
+     * Получает информацию о ресурсах
+     * @param $ids - номера ресурсов
+     * @param $limit - ограничение по количеству
+     * @return array - информация о ресурсах
+     */
+    protected function getElements($ids,$limit)
+    {
+        $result = array();
+        foreach ($ids as $id) {
+            $resource = $this->modx->getObject('modResource', $id);
+            if($resource) {
+                if ($this->isFolder === null || $resource->get('isfolder') == $this->isFolder) {
+                    if($limit-- <= 0) {
+                        $result[] = array("next_id", $id);
+                        break;
+                    }
+                    $result[] = $this->getProductInfo($resource);
+                }
+            }
         }
 
         return $result;
