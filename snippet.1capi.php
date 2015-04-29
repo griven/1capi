@@ -1,7 +1,6 @@
 <?php
 // константы которые потом можно перенести в конфиг
 define ("CATALOG_ID", 14);          // id ресурса корня каталогов
-define ("TV_MIN_INFO", true);       // определяет отдавать минимально необходимую инфу (true) или всю(false)
 define ("PRODUCT_TEMPLATE", 4);     // id шаблона товара
 define ("CATALOG_TEMPLATE", 3);     // id шаблона каталога
 define ("DEBUG", true);             // флаг отладки
@@ -236,6 +235,15 @@ class DataClass
             if (isset($this->data['limit']) && is_numeric($this->data['limit'])) {
                 $result = true;
             }
+        }
+
+        return $result;
+    }
+
+    public function isMinInfo() {
+        $result = false;
+        if (isset($this->data['mininfo']) && ($this->data['mininfo'] != false)) {
+            $result = true;
         }
 
         return $result;
@@ -781,10 +789,23 @@ class Resource extends ModxObject {
      */
     private function getProductInfo($resource)
     {
-        $rfs = $result = $resource->toArray();
-        $tvs = $this->getAllTemplateVars($resource);
+        $rfs = $this->getResourceFields($resource);
+        $tvs = $this->getTemplateVars($resource);
 
         return array($rfs, $tvs);
+    }
+
+    private function getResourceFields($resource) {
+        if($this->data->isMinInfo()) {
+            $neededKeys = array('id', 'pagetitle', 'longtitle', 'uri');
+            foreach($neededKeys as $key) {
+                $result[$key] = $resource->get($key);
+            }
+        } else {
+            $result = $resource->toArray();
+        }
+
+        return $result;
     }
 
     /**
@@ -792,21 +813,24 @@ class Resource extends ModxObject {
      * @param $resource - ресурс информацию о котором нужно узнать
      * @return array содержащит template variables
      */
-    private function getAllTemplateVars($resource)
+    private function getTemplateVars($resource)
     {
         $result = array();
         $tvs = $resource->getMany('TemplateVars');
+        $neededTVs = array('sku', 'price');
         foreach ($tvs as $tv) {
-            $tv_param = array();
-            if (TV_MIN_INFO) {
-                $tv_param['name'] = $tv->get('name');
-                $tv_param['type'] = $tv->get('type');
-                $tv_param['value'] = $tv->get('value');
-                $tv_param['source'] = $tv->get('source');
+            if ($this->data->isMinInfo()) {
+                if (in_array($tv->get('name'), $neededTVs)) {
+                    $neededKeys = array('name', 'type', 'value');
+                    foreach ($neededKeys as $key) {
+                        $tv_param[$key] = $tv->get($key);
+                    }
+                    $result[] = $tv_param;
+                }
             } else {
                 $tv_param = $tv->toArray();
+                $result[] = $tv_param;
             }
-            array_push($result, $tv_param);
         }
 
         return $result;

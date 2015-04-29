@@ -23,6 +23,10 @@ updateOrder - изменение заказа (обязательный пара
 setOrderUploadedTo1c - изменение флага загрузки в 1с для заказа
 getImages - получение картинок товара и минимальных данных о нем
 putImage - загрузка картинок товара (обязательные параметры id, tv)
+getProductsCount - получение количества товаров
+getCategoriesCount - получение количества категорий
+getUsersCount - получение количества пользователей
+getOrdersCount - получение количества заказов
 
 ====================================
 Данные (data) передаються в формате JSON
@@ -57,6 +61,14 @@ result: массив содержащий инфу о группе элемен�
 data: {"uploadedTo1c": true} или {"uploadedTo1c": false}
 result: массив элементов у которых флаг uploadedTo1c совпадает с переданным в data
 
+только для getProducts и getCategories
+data: {"mininfo" : true}
+result: массив элементов с минимальной информацией о них
+
++++getProductsCount, getOrdersCount, getCategoriesCount, getUsersCount+++
+data:
+result: 987
+
 +++getAllChild+++
 data: 
 result: массив содержащий все id товаров каталога
@@ -77,16 +89,16 @@ result: [87] - id нового ресурса
 data: [{"id":87, "longtitle": "test"}, [{"name":"keywords","value":"container1"}]]
 result: [true]
 
-+++updateOrder++
++++updateOrder+++
 data: {"id" 1, "price":2400}
 result: [true]
 
-++setOrderUploadedTo1c++
++++setOrderUploadedTo1c+++
 data: {"id":1, "uploadedTo1c": true} или {"id":1, "uploadedTo1c": 1}
 result
 [true]
 
-+++putImage++
++++putImage+++
 data: {"id" : 87, "tv":"image"}
 file: выбранный файл с форматом jpg,gif или png
 result: ["image loaded"]
