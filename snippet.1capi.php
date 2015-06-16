@@ -1,21 +1,69 @@
 <?php
-// константы которые потом можно перенести в конфиг
-define ("CATALOG_ID", 14);          // id ресурса корня каталогов
-define ("PRODUCT_TEMPLATE", 4);     // id шаблона товара
-define ("CATALOG_TEMPLATE", 3);     // id шаблона каталога
-define ("DEBUG", true);             // флаг отладки
-define ("SALT", 'solt');            // соль для hash функции
-define ("LIMIT", 1500);             // максимальное количество обрабатываемых элементов
+/**
+ * API для быстрой загрузки выгрузки информации modx для интеграции с 1С.
+ * @license GPL v2
+ * @author Vadim Rudnitskiy
+ */
+
+/**
+ * id ресурса корня каталогов
+ */
+define ("CATALOG_ID", 14);
+
+/**
+ * id шаблона товара
+ */
+define ("PRODUCT_TEMPLATE", 4);
+
+/**
+ * id шаблона каталога
+ */
+define ("CATALOG_TEMPLATE", 3);
+
+/**
+ * флаг отладки
+ */
+define ("DEBUG", true);
+
+/**
+ * соль для hash функции
+ */
+define ("SALT", 'solt');
+
+/**
+ * максимальное количество обрабатываемых элементов
+ */
+define ("LIMIT", 1500);
 
 $exchange = new Exchange($modx);
 
+/**
+ * Class Exchange главный класс по обработке данных.
+ */
 class Exchange
 {
+    /**
+     * Главный объект cms.
+     * @var modX
+     */
     private $modx;
+
+    /**
+     * объект для работы с полученными данными
+     * @var DataClass
+     */
     private $data;
 
-    private $result; // результат работы функции
+    /**
+     * результат работы функции
+     * @var array
+     */
+    private $result;
 
+    /**
+     * Получает объект modx и запускает весь процесс программы
+     * @param modX $modx главный объект cms
+     */
     public function __construct(modX &$modx)
     {
         $this->modx = &$modx;
@@ -136,11 +184,28 @@ class Exchange
     }
 }
 
+/**
+ * Class DataClass отвечает за обработку входящих данных.
+ */
 class DataClass
 {
-    private $cmd;    // функция которую требуется запустить
-    private $data;   // данные необходимые для функции
-    private $sig;    // подпись
+    /**
+     * функция которую требуется запустить
+     * @var string
+     */
+    private $cmd;
+
+    /**
+     * данные необходимые для функции
+     * @var mixed
+     */
+    private $data;
+
+    /**
+     * подпись
+     * @var string
+     */
+    private $sig;
 
     /**
      * Разбирает полученные данные
@@ -176,6 +241,7 @@ class DataClass
     }
 
     /**
+     * getter для data
      * @return mixed - данные переданные в JSON
      */
     public function getData() {
@@ -183,6 +249,7 @@ class DataClass
     }
 
     /**
+     * получает подпись
      * @return mixed подпись
      */
     public function getSig() {
@@ -215,6 +282,7 @@ class DataClass
     }
 
     /**
+     * получает значение лимита
      * @return int - значение лимита
      */
     public function getLimit() {
@@ -227,6 +295,7 @@ class DataClass
     }
 
     /**
+     * проверяет если ли id и limit
      * @return bool - true,есть и лимит и !один id
      */
     public function hasIdAndLimit() {
@@ -240,6 +309,10 @@ class DataClass
         return $result;
     }
 
+    /**
+     * проверяет установлен ли флаг MinInfo
+     * @return bool
+     */
     public function isMinInfo() {
         $result = false;
         if (isset($this->data['mininfo']) && ($this->data['mininfo'] != false)) {
@@ -288,8 +361,19 @@ class DataClass
     }
 }
 
+/**
+ * Class ModxObject родитель для классов изменяющих объекты modx
+ */
 abstract class ModxObject{
+    /**
+     * @var modX
+     */
     protected $modx;
+
+    /**
+     * @see DataClass
+     * @var DataClass
+     */
     protected $data;
 
     public function __construct(modX &$modx, DataClass &$data){
@@ -327,6 +411,9 @@ abstract class ModxObject{
     abstract protected function getElements($ids, $limit);
 }
 
+/**
+ * Class User работает с объектами User
+ */
 class User extends ModxObject{
 
     /**
@@ -400,6 +487,9 @@ class User extends ModxObject{
     }
 }
 
+/**
+ * Class Order работает с объектами Order
+ */
 class Order extends ModxObject {
 
     /**
@@ -596,6 +686,9 @@ class Order extends ModxObject {
     }
 }
 
+/**
+ * Class Resource работает с объектами Resource
+ */
 class Resource extends ModxObject {
     private $isFolder;
 
