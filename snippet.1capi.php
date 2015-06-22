@@ -366,16 +366,23 @@ class DataClass
  */
 abstract class ModxObject{
     /**
+     * объект главного класса
      * @var modX
      */
     protected $modx;
 
     /**
+     * объект работающий со входящими данными
      * @see DataClass
      * @var DataClass
      */
     protected $data;
 
+    /**
+     * Принимает внешние переменные по ссылке и запоминает в классе
+     * @param modX $modx - главный объект cms
+     * @param DataClass $data - объект обрабатывающий данные
+     */
     public function __construct(modX &$modx, DataClass &$data){
         $this->modx = &$modx;
         $this->data = &$data;
@@ -690,8 +697,18 @@ class Order extends ModxObject {
  * Class Resource работает с объектами Resource
  */
 class Resource extends ModxObject {
+    /**
+     * false - если объект не каталог, true - если объект каталог, null - если не определено
+     * @var null|boolean
+     */
     private $isFolder;
 
+    /**
+     * конструктор
+     * @param modX $modx объект главного класса cms
+     * @param DataClass $data объект отвечающий за работу с входящими данными
+     * @param null|boolean $isFolder false - если объект не каталог, true - если объект каталог, null - если не определено
+     */
     public function __construct(modX &$modx, DataClass &$data, $isFolder=null) {
         parent::__construct($modx, $data);
         $this->isFolder = $isFolder;
@@ -888,6 +905,11 @@ class Resource extends ModxObject {
         return array($rfs, $tvs);
     }
 
+    /**
+     * Получает все поля ресурса (rf) по его id
+     * @param $resource - ресурс информацию о котором нужно узнать
+     * @return array содержащит template variables
+     */
     private function getResourceFields($resource) {
         if($this->data->isMinInfo()) {
             $neededKeys = array('id', 'pagetitle', 'longtitle', 'uri');
@@ -929,13 +951,13 @@ class Resource extends ModxObject {
         return $result;
     }
 
+    // for test [{"parent":15, "pagetitle": "test"},[{"name":"keywords","value":"container"}, {"name":"meta_title","value":"collection"}] ]
     /**
      * Создает новый ресурс или обновляет старый с параметрами взятыми из JSON
-     * @param $resourceFields - массив полей ресурсов (id, template и т.п.)
-     * @param $tvs - массив полей шаблона (tv)
+     * @param array $resourceFields - массив полей ресурсов (id, template и т.п.)
+     * @param array $tvs - массив полей шаблона (tv)
      * @return array
      */
-    // for test [{"parent":15, "pagetitle": "test"},[{"name":"keywords","value":"container"}, {"name":"meta_title","value":"collection"}] ]
     private function createOrUpdateResource($resourceFields, $tvs)
     {
         $objectType = ($this->isFolder) ? 'CollectionContainer' : 'modResource';
