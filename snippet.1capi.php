@@ -500,11 +500,20 @@ class User extends ModxObject{
 class Order extends ModxObject {
 
     /**
+     * конструктор
+     * @param modX $modx объект главного класса cms
+     * @param DataClass $data объект отвечающий за работу с входящими данными
+     */
+    public function __construct(modX &$modx, DataClass &$data) {
+        parent::__construct($modx, $data);
+        $this->includeShopkeeper();
+    }
+
+    /**
      * Получает количество заказов
      * @return int - количество заказов
      */
     public function getCount() {
-        $this->includeShopkeeper();
         return $this->modx->getCount('shk_order');
     }
 
@@ -515,7 +524,6 @@ class Order extends ModxObject {
         $result[0] = false;
         $data = $this->data->getData();
         if($data['id'] > 0) {
-            $this->includeShopkeeper();
             $order_data = $this->getOrder($data['id']);
 
             if(count($order_data) > 1) {
@@ -543,7 +551,6 @@ class Order extends ModxObject {
      */
     function setOrderUploadedTo1c() {
         $result[0] = false;
-        $this->includeShopkeeper();
 
         $ids = $this->data->getIds();
         $status = $this->data->get1cStatusFromData();
@@ -572,7 +579,6 @@ class Order extends ModxObject {
 
         // если не передан id, получаем все id заказов
         if(count($ids) < 1 || $needSlice) {
-            $this->includeShopkeeper();
             $orders = $this->modx->getIterator('shk_order');
             $allIds = array();
             foreach ($orders as $order) {
