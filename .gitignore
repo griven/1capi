@@ -1,0 +1,4 @@
+*
+!/_build/*
+!.gitignore
+!/core/components/1capi/

@@ -1,0 +1,5 @@
+Changelog for 1capi
+
+1capi 1.0.0-pl
+====================================
+- Initial release
