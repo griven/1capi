@@ -38,9 +38,8 @@ class Exchange
 
         $this->result = array();
         $this->debug = $this->modx->getOption("1capi.debug", null, true);
-        $salt = $this->modx->getOption("1capi.salt", null, "solt");
 
-        $this->data = new DataClass($salt,$this->debug);
+        $this->data = new DataClass($modx);
         $this->process();
     }
 
@@ -188,13 +187,15 @@ class DataClass
     /**
      * Разбирает полученные данные
      */
-    public function __construct($salt, $debug = false)
+    public function __construct(modX &$modx)
     {
+        $this->modx = &$modx;
+
         $this->cmd = $_POST['cmd'];
         $this->data = json_decode($_POST['data'], true);
-        $this->salt = $salt;
+        $this->salt = $this->modx->getOption("1capi.salt", null , "solt");
 
-        if($debug) {
+        if($this->modx->getOption("1capi.debug", null , false)) {
             echo $this->cmd;
             if ($this->data == null)
                 echo "null data\n";
