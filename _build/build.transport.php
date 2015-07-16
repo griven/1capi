@@ -15,9 +15,11 @@ $sources = array(
     'root' => $root,
     'build' => $root . '_build/',
     'resolvers' => $root . '_build/data/resolvers.php',
+    'snippets' => $root.'_build/data/transport.snippets.php',
     'lexicon' => $root . 'core/components/'.PKG_NAME_LOWER.'/lexicon/',
     'docs' => $root.'core/components/'.PKG_NAME_LOWER.'/docs/',
     'source_core' => $root.'core/components/'.PKG_NAME_LOWER,
+    'elements' => $root.'core/components/'.PKG_NAME_LOWER.'/elements/',
 );
 unset($root);
 
@@ -38,6 +40,33 @@ $builder->registerNamespace(PKG_NAME_LOWER,false,true,'{core_path}components/'.P
 
 /* resolve files */
 $vehicle = include $sources["resolvers"];
+$builder->putVehicle($vehicle);
+
+$category= $modx->newObject('modCategory');
+$category->set('id',1);
+$category->set('category',PKG_NAME);
+
+/* add snippet */
+$modx->log(modX::LOG_LEVEL_INFO,'Packaging in snippets...');
+$snippets = include $sources['snippets'];
+if (empty($snippets)) $modx->log(modX::LOG_LEVEL_ERROR,'Could not package in snippets.');
+$category->addMany($snippets);
+
+/* create category vehicle */
+$attr = array(
+    xPDOTransport::UNIQUE_KEY => 'category',
+    xPDOTransport::PRESERVE_KEYS => false,
+    xPDOTransport::UPDATE_OBJECT => true,
+    xPDOTransport::RELATED_OBJECTS => true,
+    xPDOTransport::RELATED_OBJECT_ATTRIBUTES => array (
+        'Snippets' => array(
+            xPDOTransport::PRESERVE_KEYS => false,
+            xPDOTransport::UPDATE_OBJECT => true,
+            xPDOTransport::UNIQUE_KEY => 'name',
+        ),
+    ),
+);
+$vehicle = $builder->createVehicle($category,$attr);
 $builder->putVehicle($vehicle);
 
 /* now pack in the license file, readme and setup options */
