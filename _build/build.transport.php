@@ -6,7 +6,7 @@ set_time_limit(0);
 /* define package names */
 define('PKG_NAME','1capi');
 define('PKG_NAME_LOWER','1capi');
-define('PKG_VERSION','1.1.0');
+define('PKG_VERSION','1.1.1');
 define('PKG_RELEASE','pl');
 
 /* define build paths */
@@ -17,9 +17,10 @@ $sources = array(
     'resolvers' => $root . '_build/data/resolvers.php',
     'snippets' => $root.'_build/data/transport.snippets.php',
     'settings' => $root.'_build/data/transport.settings.php',
+    'chunks' => $root.'_build/data/transport.chunks.php',
     'lexicon' => $root . 'core/components/'.PKG_NAME_LOWER.'/lexicon/',
     'docs' => $root.'core/components/'.PKG_NAME_LOWER.'/docs/',
-    'source_core' => $root.'core/components/'.PKG_NAME_LOWER,
+    'source_core' => $root.'core/components/'.PKG_NAME_LOWER."/",
     'elements' => $root.'core/components/'.PKG_NAME_LOWER.'/elements/',
 );
 unset($root);
@@ -52,6 +53,12 @@ $modx->log(modX::LOG_LEVEL_INFO,'Packaging in snippets...');
 $snippets = include $sources['snippets'];
 if (empty($snippets)) $modx->log(modX::LOG_LEVEL_ERROR,'Could not package in snippets.');
 $category->addMany($snippets);
+
+/* add chunks */
+$modx->log(modX::LOG_LEVEL_INFO,'Packaging in chunks...');
+$snippets = include $sources['chunks'];
+if (empty($snippets)) $modx->log(modX::LOG_LEVEL_ERROR,'Could not package in chunks.');
+$category->addMany($chunk);
 
 /* create category vehicle */
 $attr = array(
