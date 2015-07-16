@@ -6,7 +6,7 @@ set_time_limit(0);
 /* define package names */
 define('PKG_NAME','1capi');
 define('PKG_NAME_LOWER','1capi');
-define('PKG_VERSION','1.0.0');
+define('PKG_VERSION','1.1.0');
 define('PKG_RELEASE','pl');
 
 /* define build paths */
@@ -16,6 +16,7 @@ $sources = array(
     'build' => $root . '_build/',
     'resolvers' => $root . '_build/data/resolvers.php',
     'snippets' => $root.'_build/data/transport.snippets.php',
+    'settings' => $root.'_build/data/transport.settings.php',
     'lexicon' => $root . 'core/components/'.PKG_NAME_LOWER.'/lexicon/',
     'docs' => $root.'core/components/'.PKG_NAME_LOWER.'/docs/',
     'source_core' => $root.'core/components/'.PKG_NAME_LOWER,
@@ -68,6 +69,24 @@ $attr = array(
 );
 $vehicle = $builder->createVehicle($category,$attr);
 $builder->putVehicle($vehicle);
+
+/* load system settings */
+$settings = include $sources['settings'];
+if (!is_array($settings)) {
+    $modx->log(modX::LOG_LEVEL_ERROR,'Could not package in settings.');
+} else {
+    $attributes= array(
+        xPDOTransport::UNIQUE_KEY => 'key',
+        xPDOTransport::PRESERVE_KEYS => true,
+        xPDOTransport::UPDATE_OBJECT => false,
+    );
+    foreach ($settings as $setting) {
+        $vehicle = $builder->createVehicle($setting,$attributes);
+        $builder->putVehicle($vehicle);
+    }
+    $modx->log(modX::LOG_LEVEL_INFO,'Packaged in '.count($settings).' System Settings.');
+}
+unset($settings,$setting,$attributes);
 
 /* now pack in the license file, readme and setup options */
 $builder->setPackageAttributes(array(

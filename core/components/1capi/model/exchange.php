@@ -35,8 +35,12 @@ class Exchange
     public function __construct(modX &$modx)
     {
         $this->modx = &$modx;
-        $this->data = new DataClass();
+
         $this->result = array();
+        $this->debug = $this->modx->getOption("1capi.debug", null, true);
+        $salt = $this->modx->getOption("1capi.salt", null, "solt");
+
+        $this->data = new DataClass($salt,$this->debug);
         $this->process();
     }
 
@@ -136,12 +140,12 @@ class Exchange
         if (count($this->result) == 0) {
             $this->result["error"] .= "|empty result";
         }
-        if(DEBUG) {
+        if($this->debug) {
             echo "sig ".$this->data->getSig()."\n";
             echo "result\n";
         }
         echo json_encode($this->result);
-        if(DEBUG) {
+        if($this->debug) {
             echo "\n\npretty result\n";
             foreach ($this->result as $res) {
                 echo json_encode($res) . "\n";
@@ -176,14 +180,21 @@ class DataClass
     private $sig;
 
     /**
+     * соль необходимая для проверки подписи
+     * @var string
+     */
+    private $salt;
+
+    /**
      * Разбирает полученные данные
      */
-    public function __construct()
+    public function __construct($salt, $debug = false)
     {
         $this->cmd = $_POST['cmd'];
         $this->data = json_decode($_POST['data'], true);
+        $this->salt = $salt;
 
-        if(DEBUG) {
+        if($debug) {
             echo $this->cmd;
             if ($this->data == null)
                 echo "null data\n";
@@ -196,7 +207,7 @@ class DataClass
      * @return bool - одобрена ли подпись
      */
     public function approveSig() {
-        $this->sig = md5($_POST['cmd'] . $_POST['data'] . SALT);
+        $this->sig = md5($_POST['cmd'] . $_POST['data'] . $this->salt);
         return ($this->sig == $_POST['sig']);
     }
 
@@ -221,12 +232,7 @@ class DataClass
      * @return mixed подпись
      */
     public function getSig() {
-        if(DEBUG) {
-            $result = $this->sig;
-        } else {
-            $result = "|can't get sig";
-        }
-        return $result;
+        return $this->sig;
     }
 
     /**
@@ -257,7 +263,7 @@ class DataClass
         if (isset($this->data['limit']) && is_numeric($this->data['limit'])) {
             $limit = $this->data['limit'];
         } else {
-            $limit = LIMIT;
+            $limit = $this->modx->getOption("1capi.limit", null, 1500);
         }
         return $limit;
     }
@@ -678,6 +684,12 @@ class Resource extends ModxObject {
     private $isFolder;
 
     /**
+     * id ресурса корня каталогов
+     * @var integer
+     */
+    private $catalog_id;
+
+    /**
      * конструктор
      * @param modX $modx объект главного класса cms
      * @param DataClass $data объект отвечающий за работу с входящими данными
@@ -686,6 +698,7 @@ class Resource extends ModxObject {
     public function __construct(modX &$modx, DataClass &$data, $isFolder=null) {
         parent::__construct($modx, $data);
         $this->isFolder = $isFolder;
+        $this->catalog_id = $this->modx->getOption("1capi.catalog_id", null, 14);
     }
 
     /**
@@ -709,7 +722,7 @@ class Resource extends ModxObject {
     public function getAllChild()
     {
         $ids = $this->data->getIds();
-        $id = (count($ids) < 1) ? CATALOG_ID : $ids[0];
+        $id = (count($ids) < 1) ? $this->catalog_id : $ids[0];
 
         return $this->modx->getTree($id);
     }
@@ -829,7 +842,7 @@ class Resource extends ModxObject {
         $needSlice = $this->data->hasIdAndLimit();
 
         if (!$ids || $needSlice) {
-            $allIds = $this->modx->getChildIds(CATALOG_ID);
+            $allIds = $this->modx->getChildIds($this->catalog_id);
             asort($allIds);
 
             $key = ($needSlice) ? array_search($ids[0], $allIds) : 0;
@@ -962,11 +975,11 @@ class Resource extends ModxObject {
 
             if ($this->isFolder) {
                 $resourceArray['isfolder'] = 1;
-                $resourceArray['template'] = CATALOG_TEMPLATE;
+                $resourceArray['template'] = $this->modx->getOption("1capi.catalog_template", null, 3);
                 $resourceArray['show_in_tree'] = 1;
             } else {
                 $resourceArray['isfolder'] = 0;
-                $resourceArray['template'] = PRODUCT_TEMPLATE;
+                $resourceArray['template'] = $this->modx->getOption("1capi.product_template", null, 4);
                 $resourceArray['show_in_tree'] = 0;
             }
 
