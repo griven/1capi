@@ -1,4 +1,7 @@
 Changelog for 1capi
+1capi 1.2.1-pl
+====================================
+- Fix putImage problem with loading file with not-english name
 
 1capi 1.2.0-pl
 ====================================

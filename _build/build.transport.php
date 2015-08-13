@@ -6,7 +6,7 @@ set_time_limit(0);
 /* define package names */
 define('PKG_NAME','1capi');
 define('PKG_NAME_LOWER','1capi');
-define('PKG_VERSION','1.1.1');
+define('PKG_VERSION','1.2.1');
 define('PKG_RELEASE','pl');
 
 /* define build paths */

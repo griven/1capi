@@ -811,7 +811,6 @@ class Resource extends ModxObject {
             if ($filename != '' && isset($tv)) {
                 if (in_array($ext, $ext_array)) {
                     // Делаем уникальное имя файла
-                    $filename = mb_strtolower($filename);
                     $filename = str_replace(' ', '_', $filename);
                     $filename = date("Ymdgi") . $filename;
 
